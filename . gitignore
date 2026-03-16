@@ -1,0 +1,72 @@
+# =============================================
+# NOXAR ARCANA — .gitignore
+# =============================================
+
+# ─── SEGURANÇA — NUNCA COMMITAR ───────────────
+.env
+.env.local
+.env.production
+.env.staging
+*.key
+*.pem
+secrets.json
+
+# ─── PYTHON ───────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+
+# ─── MÍDIA GERADA ─────────────────────────────
+*.mp4
+*.mp3
+*.wav
+*.ogg
+*.webm
+/tmp/
+/temp/
+noxar_videos/
+generated/
+
+# ─── NODE / FRONTEND ──────────────────────────
+node_modules/
+.next/
+.nuxt/
+dist/
+.cache/
+.parcel-cache/
+
+# ─── SISTEMA OPERACIONAL ──────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# ─── IDEs ─────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── LOGS ─────────────────────────────────────
+*.log
+logs/
+
+# ─── BANCO LOCAL ──────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
