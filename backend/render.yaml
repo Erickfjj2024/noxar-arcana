@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: noxar-arcana-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      apt-get install -y ffmpeg
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: FLASK_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+      - key: TEMP_VIDEO_DIR
+        value: /tmp/noxar_videos
+    healthCheckPath: /health
