@@ -1,13 +1,14 @@
 """
 NOXAR ARCANA — Video Route
-Endpoint principal: orquestra todo o pipeline e entrega vídeo para download
+Sistema de polling: backend gera em background, frontend busca quando pronto.
 """
 
 import os
 import uuid
 import shutil
 import logging
-from flask import Blueprint, request, jsonify, g, send_file, after_this_request
+import threading
+from flask import Blueprint, request, jsonify, g, send_file
 from routes.auth import require_auth
 from services.groq_service import pipeline_roteiro, transcrever_audio
 from services.tts_service import pipeline_tts
@@ -17,96 +18,117 @@ from supabase import create_client
 
 logger = logging.getLogger(__name__)
 
-video_bp = Blueprint("video", __name__)
+video_bp   = Blueprint("video", __name__)
+TEMP_DIR   = os.getenv("TEMP_VIDEO_DIR", "/tmp/noxar_videos")
+VIDEOS_DIR = os.path.join(TEMP_DIR, "ready")
 
-TEMP_DIR = os.getenv("TEMP_VIDEO_DIR", "/tmp/noxar_videos")
+os.makedirs(TEMP_DIR,   exist_ok=True)
+os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 
-# ─── SUPABASE CLIENT ─────────────────────────────────────────────
 def get_supabase():
-    return create_client(
-        os.getenv("SUPABASE_URL"),
-        os.getenv("SUPABASE_SERVICE_KEY"),
-    )
+    return create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
 
-# ─── HELPERS ─────────────────────────────────────────────────────
-def update_video_status(video_id: str, status: str, error: str = None, video_url: str = None):
-    """Atualiza status do vídeo no Supabase."""
+def update_status(video_id, status, error=None):
     try:
-        supabase = get_supabase()
         data = {"status": status}
         if error:
-            data["error_msg"] = error
-        if video_url:
-            data["video_url"] = video_url
+            data["error_msg"] = error[:200]
         if status == "done":
             from datetime import datetime, timezone
             data["completed_at"] = datetime.now(timezone.utc).isoformat()
-
-        supabase.table("videos").update(data).eq("id", video_id).execute()
+        get_supabase().table("videos").update(data).eq("id", video_id).execute()
     except Exception as e:
-        logger.warning(f"Falha ao atualizar status: {e}")
+        logger.warning(f"update_status: {e}")
 
 
-def extrair_narracao_completa(roteiro: dict) -> str:
-    """Concatena narração de todas as cenas em texto único."""
-    cenas = roteiro.get("cenas", [])
+def extrair_narracao(roteiro):
     partes = []
-
-    gancho = roteiro.get("gancho", "")
-    if gancho:
-        partes.append(gancho)
-
-    for cena in cenas:
-        narracao = cena.get("narracao", "").strip()
-        if narracao:
-            partes.append(narracao)
-
-    encerramento = roteiro.get("encerramento", "")
-    if encerramento:
-        partes.append(encerramento)
-
+    if roteiro.get("gancho"):     partes.append(roteiro["gancho"])
+    for c in roteiro.get("cenas", []):
+        if c.get("narracao"):     partes.append(c["narracao"].strip())
+    if roteiro.get("encerramento"): partes.append(roteiro["encerramento"])
     return " ".join(partes)
 
 
-def extrair_segmentos_planos(storyboard: list) -> list:
-    """Extrai lista plana de segmentos do storyboard aninhado."""
-    segmentos = []
-    for cena in storyboard:
-        for seg in cena.get("segmentos", []):
-            segmentos.append(seg)
-    return segmentos
+def run_pipeline(video_id, user_id, tema, nicho, plataforma, duracao, persona, template):
+    work_dir = os.path.join(TEMP_DIR, video_id)
+    os.makedirs(work_dir, exist_ok=True)
+    try:
+        logger.info(f"[{video_id[:8]}] Iniciando pipeline")
+
+        # 1. Roteiro
+        resultado = pipeline_roteiro(tema, nicho, plataforma, duracao, persona, template)
+        if not resultado:
+            return update_status(video_id, "error", "falha no roteiro")
+
+        roteiro    = resultado["roteiro"]
+        storyboard = resultado["storyboard"]
+
+        try:
+            get_supabase().table("videos").update({
+                "script": resultado,
+                "title":  roteiro.get("titulo", tema)[:100],
+            }).eq("id", video_id).execute()
+        except Exception:
+            pass
+
+        # 2. Imagens
+        segmentos = pipeline_imagens(storyboard, os.path.join(work_dir, "images"), nicho)
+        if not segmentos:
+            return update_status(video_id, "error", "falha nas imagens")
+
+        # 3. Narração
+        resultado_tts = pipeline_tts(extrair_narracao(roteiro), os.path.join(work_dir, "audio"), persona)
+        if not resultado_tts:
+            return update_status(video_id, "error", "falha na narração")
+
+        # 4. Whisper
+        transcricao  = transcrever_audio(resultado_tts["final"])
+        palavras     = transcricao.get("words", []) if transcricao else []
+
+        # 5. Montagem
+        video_path = pipeline_video(
+            segmentos, resultado_tts["final"], palavras,
+            os.path.join(work_dir, "video"),
+            roteiro.get("titulo", tema), template, nicho
+        )
+        if not video_path or not os.path.exists(video_path):
+            return update_status(video_id, "error", "falha na montagem")
+
+        # Salva na pasta ready
+        titulo_slug = roteiro.get("titulo","noxar").lower().replace(" ","_").replace("/","_")[:40]
+        filename    = f"{titulo_slug}_{video_id[:8]}.mp4"
+        final_path  = os.path.join(VIDEOS_DIR, video_id + ".mp4")
+        shutil.copy(video_path, final_path)
+
+        get_supabase().table("videos").update({
+            "status": "done", "video_url": filename
+        }).eq("id", video_id).execute()
+
+        try:
+            get_supabase().rpc("increment_video_count", {"user_uuid": user_id}).execute()
+        except Exception:
+            pass
+
+        logger.info(f"[{video_id[:8]}] ✅ Concluído — {os.path.getsize(final_path)/1024/1024:.1f}MB")
+
+    except Exception as e:
+        logger.error(f"[{video_id[:8]}] Erro: {e}", exc_info=True)
+        update_status(video_id, "error", str(e)[:200])
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
-# ─── ENDPOINT PRINCIPAL ───────────────────────────────────────────
 @video_bp.route("/gerar", methods=["POST"])
 @require_auth
-def gerar_video():
-    """
-    Pipeline completo de geração de vídeo.
-
-    Body JSON:
-    {
-        "tema":       "string",
-        "nicho":      "true_crime|terror|misterio|dark_history",
-        "plataforma": "tiktok|youtube|kwai|reels",
-        "duracao":    60,
-        "persona":    "investigador|contador|informante",
-        "template":   "sangue_frio|nevoa|abismo"
-    }
-
-    Retorna o arquivo MP4 diretamente para download.
-    """
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "body JSON inválido"}), 400
-
-    # Valida campos
-    campos = ["tema", "nicho", "plataforma", "duracao", "persona", "template"]
-    for campo in campos:
-        if campo not in data:
-            return jsonify({"error": f"campo obrigatório: {campo}"}), 400
+def gerar():
+    """Inicia pipeline em background, retorna video_id imediatamente."""
+    data = request.get_json() or {}
+    for c in ["tema","nicho","plataforma","duracao","persona","template"]:
+        if c not in data:
+            return jsonify({"error": f"campo obrigatório: {c}"}), 400
 
     tema       = str(data["tema"]).strip()
     nicho      = str(data["nicho"]).strip()
@@ -118,236 +140,98 @@ def gerar_video():
     if not tema or duracao < 15 or duracao > 600:
         return jsonify({"error": "parâmetros inválidos"}), 400
 
-    # Cria registro no Supabase
-    video_id  = str(uuid.uuid4())
-    work_dir  = os.path.join(TEMP_DIR, video_id)
-    os.makedirs(work_dir, exist_ok=True)
+    video_id = str(uuid.uuid4())
 
     try:
-        supabase = get_supabase()
-        supabase.table("videos").insert({
-            "id":              video_id,
-            "user_id":         g.user_id,
-            "title":           tema[:100],
-            "niche":           nicho,
-            "platform":        plataforma,
-            "persona":         persona,
-            "template":        template,
-            "duration_target": duracao,
-            "status":          "processing",
+        get_supabase().table("videos").insert({
+            "id": video_id, "user_id": g.user_id,
+            "title": tema[:100], "niche": nicho,
+            "platform": plataforma, "persona": persona,
+            "template": template, "duration_target": duracao,
+            "status": "processing",
         }).execute()
     except Exception as e:
-        logger.warning(f"Falha ao criar registro: {e}")
+        logger.warning(f"Insert falhou: {e}")
 
-    logger.info(f"[{video_id[:8]}] Iniciando pipeline — '{tema[:40]}'")
+    threading.Thread(
+        target=run_pipeline,
+        args=(video_id, g.user_id, tema, nicho, plataforma, duracao, persona, template),
+        daemon=True
+    ).start()
 
+    logger.info(f"[{video_id[:8]}] Thread iniciada")
+    return jsonify({"success": True, "video_id": video_id, "status": "processing"}), 202
+
+
+@video_bp.route("/status/<video_id>", methods=["GET"])
+@require_auth
+def status(video_id):
+    """Polling — frontend chama a cada 5s."""
     try:
-        # ── ETAPA 1: ROTEIRO ─────────────────────────────────────
-        logger.info(f"[{video_id[:8]}] Etapa 1/5: Roteiro")
-        update_video_status(video_id, "processing")
+        res = get_supabase().table("videos")\
+            .select("id,title,status,error_msg,completed_at,video_url")\
+            .eq("id", video_id).eq("user_id", g.user_id)\
+            .single().execute()
+        if not res.data:
+            return jsonify({"error": "não encontrado"}), 404
+        return jsonify({"success": True, "video": res.data}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        resultado_roteiro = pipeline_roteiro(
-            tema=tema,
-            nicho=nicho,
-            plataforma=plataforma,
-            duracao=duracao,
-            persona=persona,
-            template=template,
-        )
 
-        if not resultado_roteiro:
-            update_video_status(video_id, "error", "falha na geração do roteiro")
-            return jsonify({"error": "falha ao gerar roteiro"}), 500
+@video_bp.route("/download/<video_id>", methods=["GET"])
+@require_auth
+def download(video_id):
+    """Serve MP4 para download após status=done."""
+    try:
+        res = get_supabase().table("videos")\
+            .select("title,video_url,status")\
+            .eq("id", video_id).eq("user_id", g.user_id)\
+            .single().execute()
 
-        roteiro    = resultado_roteiro["roteiro"]
-        storyboard = resultado_roteiro["storyboard"]
+        if not res.data:
+            return jsonify({"error": "não encontrado"}), 404
+        if res.data.get("status") != "done":
+            return jsonify({"error": "vídeo ainda não está pronto"}), 425
 
-        # Salva roteiro no Supabase
-        try:
-            supabase.table("videos").update({
-                "script": resultado_roteiro,
-                "title":  roteiro.get("titulo", tema)[:100],
-            }).eq("id", video_id).execute()
-        except Exception:
-            pass
-
-        # ── ETAPA 2: IMAGENS ─────────────────────────────────────
-        logger.info(f"[{video_id[:8]}] Etapa 2/5: Imagens")
-        images_dir = os.path.join(work_dir, "images")
-
-        segmentos_com_imagens = pipeline_imagens(
-            storyboard=storyboard,
-            output_dir=images_dir,
-            nicho=nicho,
-        )
-
-        if not segmentos_com_imagens:
-            update_video_status(video_id, "error", "falha na geração de imagens")
-            return jsonify({"error": "falha ao gerar imagens"}), 500
-
-        # ── ETAPA 3: NARRAÇÃO ────────────────────────────────────
-        logger.info(f"[{video_id[:8]}] Etapa 3/5: Narração")
-        audio_dir     = os.path.join(work_dir, "audio")
-        narracao_text = extrair_narracao_completa(roteiro)
-
-        resultado_tts = pipeline_tts(
-            narracao_completa=narracao_text,
-            output_dir=audio_dir,
-            persona=persona,
-        )
-
-        if not resultado_tts:
-            update_video_status(video_id, "error", "falha na geração de narração")
-            return jsonify({"error": "falha ao gerar narração"}), 500
-
-        audio_final = resultado_tts["final"]
-
-        # ── ETAPA 4: TRANSCRIÇÃO (WHISPER) ───────────────────────
-        logger.info(f"[{video_id[:8]}] Etapa 4/5: Whisper")
-        transcricao = transcrever_audio(audio_final)
-        palavras_whisper = transcricao.get("words", []) if transcricao else []
-
-        if not palavras_whisper:
-            logger.warning(f"[{video_id[:8]}] Whisper sem palavras — legendas desativadas")
-
-        # ── ETAPA 5: MONTAGEM ────────────────────────────────────
-        logger.info(f"[{video_id[:8]}] Etapa 5/5: Montagem")
-        video_dir = os.path.join(work_dir, "video")
-
-        video_final = pipeline_video(
-            segmentos=segmentos_com_imagens,
-            audio_path=audio_final,
-            palavras_whisper=palavras_whisper,
-            output_dir=video_dir,
-            titulo=roteiro.get("titulo", tema),
-            template=template,
-            nicho=nicho,
-        )
-
-        if not video_final or not os.path.exists(video_final):
-            update_video_status(video_id, "error", "falha na montagem do vídeo")
-            return jsonify({"error": "falha ao montar vídeo"}), 500
-
-        # ── ENTREGA ──────────────────────────────────────────────
-        update_video_status(video_id, "done")
-
-        # Incrementa contador de vídeos do usuário
-        try:
-            supabase.rpc("increment_video_count", {"user_uuid": g.user_id}).execute()
-        except Exception:
-            pass
-
-        tamanho = os.path.getsize(video_final)
-        logger.info(
-            f"[{video_id[:8]}] ✅ Concluído — "
-            f"{tamanho / (1024*1024):.1f}MB"
-        )
-
-        # Nome do arquivo para download
-        titulo_slug = roteiro.get("titulo", "noxar_video")\
-            .lower()\
-            .replace(" ", "_")\
-            .replace("/", "_")[:40]
-        filename = f"{titulo_slug}_{video_id[:8]}.mp4"
-
-        # Deleta pasta de trabalho após enviar o arquivo
-        @after_this_request
-        def cleanup(response):
-            try:
-                shutil.rmtree(work_dir, ignore_errors=True)
-                logger.info(f"[{video_id[:8]}] Temp limpo")
-            except Exception:
-                pass
-            return response
+        video_path = os.path.join(VIDEOS_DIR, video_id + ".mp4")
+        if not os.path.exists(video_path):
+            return jsonify({"error": "arquivo não encontrado no servidor"}), 404
 
         return send_file(
-            video_final,
-            mimetype="video/mp4",
+            video_path, mimetype="video/mp4",
             as_attachment=True,
-            download_name=filename,
+            download_name=res.data.get("video_url", "noxar_video.mp4"),
         )
-
     except Exception as e:
-        logger.error(f"[{video_id[:8]}] Erro inesperado: {e}", exc_info=True)
-        update_video_status(video_id, "error", str(e)[:200])
-        try:
-            shutil.rmtree(work_dir, ignore_errors=True)
-        except Exception:
-            pass
-        return jsonify({"error": "erro interno — tente novamente"}), 500
+        return jsonify({"error": str(e)}), 500
 
 
-# ─── HISTÓRICO ───────────────────────────────────────────────────
 @video_bp.route("/historico", methods=["GET"])
 @require_auth
 def historico():
-    """
-    Retorna histórico de vídeos do usuário.
-    Query params: limit (default 20), offset (default 0)
-    """
-    limit  = min(int(request.args.get("limit",  20)), 50)
+    limit  = min(int(request.args.get("limit", 20)), 50)
     offset = int(request.args.get("offset", 0))
-
     try:
-        supabase = get_supabase()
-        response = supabase.table("videos")\
+        res = get_supabase().table("videos")\
             .select("id,title,niche,platform,persona,template,status,created_at,completed_at,duration_target")\
             .eq("user_id", g.user_id)\
             .order("created_at", desc=True)\
             .range(offset, offset + limit - 1)\
             .execute()
-
-        return jsonify({
-            "success": True,
-            "videos":  response.data,
-            "total":   len(response.data),
-        }), 200
-
+        return jsonify({"success": True, "videos": res.data}), 200
     except Exception as e:
-        logger.error(f"Erro ao buscar histórico: {e}")
-        return jsonify({"error": "erro ao buscar histórico"}), 500
+        return jsonify({"error": str(e)}), 500
 
 
-# ─── STATUS ──────────────────────────────────────────────────────
-@video_bp.route("/status/<video_id>", methods=["GET"])
-@require_auth
-def status(video_id: str):
-    """Retorna status atual de um vídeo específico."""
-    try:
-        supabase = get_supabase()
-        response = supabase.table("videos")\
-            .select("id,title,status,error_msg,created_at,completed_at")\
-            .eq("id", video_id)\
-            .eq("user_id", g.user_id)\
-            .single()\
-            .execute()
-
-        if not response.data:
-            return jsonify({"error": "vídeo não encontrado"}), 404
-
-        return jsonify({"success": True, "video": response.data}), 200
-
-    except Exception as e:
-        logger.error(f"Erro ao buscar status: {e}")
-        return jsonify({"error": "erro ao buscar status"}), 500
-
-
-# ─── DELETAR ─────────────────────────────────────────────────────
 @video_bp.route("/<video_id>", methods=["DELETE"])
 @require_auth
-def deletar(video_id: str):
-    """Remove um vídeo do histórico do usuário."""
+def deletar(video_id):
     try:
-        supabase = get_supabase()
-        supabase.table("videos")\
-            .delete()\
-            .eq("id", video_id)\
-            .eq("user_id", g.user_id)\
-            .execute()
-
+        get_supabase().table("videos")\
+            .delete().eq("id", video_id).eq("user_id", g.user_id).execute()
+        path = os.path.join(VIDEOS_DIR, video_id + ".mp4")
+        if os.path.exists(path): os.remove(path)
         return jsonify({"success": True}), 200
-
     except Exception as e:
-        logger.error(f"Erro ao deletar vídeo: {e}")
-        return jsonify({"error": "erro ao deletar vídeo"}), 500
-
+        return jsonify({"error": str(e)}), 500
