@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teste Supabase</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body { background:#050508; color:#E8E8F0; font-family:'Courier New',monospace; padding:24px; }
+input { display:block; width:300px; padding:10px; margin:8px 0; background:#12121A; border:1px solid #2A2A42; color:#fff; font-family:inherit; font-size:14px; }
+button { padding:10px 24px; background:#7B2FBE; border:none; color:#fff; cursor:pointer; margin:6px 4px 6px 0; font-family:inherit; }
+#log { margin-top:24px; background:#0A0A0F; border:1px solid #2A2A42; padding:16px; min-height:120px; white-space:pre-wrap; font-size:12px; line-height:1.8; }
+.ok { color:#00F5A0 } .err { color:#FF3366 } .info { color:#C77DFF }
+</style>
+</head>
+<body>
+<h3 style="color:#9D4EDD;letter-spacing:.2em">TESTE SUPABASE DIRETO</h3>
+
+<input id="email" type="email" placeholder="email" value="teste@teste.com">
+<input id="pass" type="password" placeholder="senha" value="123456">
+<input id="nome" type="text" placeholder="nome" value="Teste User">
+
+<div>
+  <button onclick="testConn()">1. Testar Conexão</button>
+  <button onclick="testReg()">2. Cadastrar</button>
+  <button onclick="testLogin()">3. Login</button>
+  <button onclick="testSession()">4. Ver Sessão</button>
+  <button onclick="clearLog()">Limpar</button>
+</div>
+
+<div id="log">aguardando...</div>
+
+<script>
+const SUPABASE_URL  = 'https://ekhulndagwuhbzgihcst.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVraHVsbmRhZ3d1aGJ6Z2loY3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NDg5MzIsImV4cCI6MjA4OTIyNDkzMn0.0JHT-hD_GvXgK3RU6mp69_l7Qa9NCWtlgCDBMhGEZo4';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function log(msg, type='') {
+  const el = document.getElementById('log');
+  const line = document.createElement('span');
+  line.className = type;
+  line.textContent = new Date().toLocaleTimeString() + ' — ' + msg + '\n';
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+async function testConn() {
+  log('Testando conexão...', 'info');
+  try {
+    const { data, error } = await sb.from('profiles').select('count').limit(1);
+    if (error) { log('❌ Erro: ' + error.message, 'err'); log('Código: ' + error.code, 'err'); }
+    else { log('✅ Conexão OK — Supabase respondeu', 'ok'); }
+  } catch(e) { log('❌ Exceção: ' + e.message, 'err'); }
+}
+
+async function testReg() {
+  const email = document.getElementById('email').value;
+  const pass  = document.getElementById('pass').value;
+  const nome  = document.getElementById('nome').value;
+  log('Tentando cadastro: ' + email, 'info');
+  try {
+    const { data, error } = await sb.auth.signUp({
+      email, password: pass,
+      options: { data: { display_name: nome } }
+    });
+    if (error) {
+      log('❌ Erro cadastro: ' + error.message, 'err');
+      log('Status: ' + error.status, 'err');
+    } else {
+      log('✅ Cadastro OK', 'ok');
+      log('User ID: ' + (data.user?.id || 'null'), 'ok');
+      log('Session: ' + (data.session ? 'SIM' : 'NÃO — confirme email'), data.session ? 'ok' : 'err');
+    }
+  } catch(e) { log('❌ Exceção: ' + e.message, 'err'); }
+}
+
+async function testLogin() {
+  const email = document.getElementById('email').value;
+  const pass  = document.getElementById('pass').value;
+  log('Tentando login: ' + email, 'info');
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      log('❌ Erro login: ' + error.message, 'err');
+    } else {
+      log('✅ Login OK', 'ok');
+      log('User: ' + data.user?.email, 'ok');
+      log('Token: ' + data.session?.access_token?.slice(0,30) + '...', 'ok');
+    }
+  } catch(e) { log('❌ Exceção: ' + e.message, 'err'); }
+}
+
+async function testSession() {
+  log('Verificando sessão atual...', 'info');
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    log('✅ Sessão ativa: ' + session.user.email, 'ok');
+  } else {
+    log('❌ Sem sessão ativa', 'err');
+  }
+}
+</script>
+</body>
+</html>
