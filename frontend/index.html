@@ -1,0 +1,2697 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#050508">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>NOXAR ARCANA</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Outfit:wght@300;400;500&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ── RESET & ROOT ── */
+:root {
+  --void:#050508; --deep:#0A0A0F; --surface:#12121A; --overlay:#1A1A26;
+  --p-abyss:#1E0A3C; --p-deep:#4A0E8F; --p-core:#7B2FBE;
+  --p-vivid:#9D4EDD; --p-glow:#C77DFF; --p-ghost:#E8D5FF;
+  --txt:#E8E8F0; --txt2:#AEAECE; --txt3:#6B6B90; --txt4:#3D3D5C;
+  --border:#2A2A42; --success:#00F5A0; --error:#FF3366; --warning:#FFB800;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--void);color:var(--txt);font-family:'Outfit',sans-serif;cursor:none}
+@media(hover:none)and(pointer:coarse){html,body{cursor:auto}}
+
+/* ── CURSOR ── */
+#cur,#cur-ring{position:fixed;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);border-radius:50%}
+#cur{width:8px;height:8px;background:var(--p-glow);box-shadow:0 0 12px var(--p-core);transition:transform .1s}
+#cur-ring{width:32px;height:32px;border:1px solid rgba(155,78,221,.4);transition:width .3s,height .3s}
+@media(hover:none)and(pointer:coarse){#cur,#cur-ring{display:none}}
+
+/* ── BACKGROUND ── */
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+.nebula{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.orb{position:absolute;border-radius:50%;filter:blur(100px);pointer-events:none;animation:orbF 18s ease-in-out infinite}
+.orb1{width:500px;height:500px;background:radial-gradient(circle,rgba(74,14,143,.35) 0%,transparent 70%);top:-150px;left:-150px}
+.orb2{width:350px;height:350px;background:radial-gradient(circle,rgba(123,47,190,.25) 0%,transparent 70%);bottom:-80px;right:-80px;animation-delay:-9s}
+@keyframes orbF{0%,100%{transform:translate(0,0) scale(1);opacity:.6}50%{transform:translate(25px,-20px) scale(1.08);opacity:1}}
+.noise{position:fixed;inset:0;z-index:1;opacity:.03;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:180px}
+.scanlines{position:fixed;inset:0;z-index:2;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.025) 2px,rgba(0,0,0,.025) 4px)}
+.vignette{position:fixed;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(5,5,8,.7) 85%,rgba(5,5,8,.98) 100%)}
+
+/* ── LAYERS Z-INDEX PLAN ──
+  0: canvas, nebula
+  1-3: noise, scanlines, vignette
+  8: arcane particle  (ABOVE everything, below modals)
+  10: .app wrapper
+  20: app-footer
+  50: mute button
+  100: terminal
+  200: processing overlay
+  300: ar-arquivo overlay
+  400: coordenada flash
+  500: chave3 overlay
+  600: toasts/notifs
+  99999: cursor
+── */
+
+/* ── TYPOGRAPHY ── */
+.font-cinzel{font-family:'Cinzel',serif}
+.font-mono{font-family:'JetBrains Mono',monospace}
+
+/* ── LOGO ── */
+.logo-wrap{text-align:center}
+.logo-main{font-family:'Cinzel',serif;font-weight:900;letter-spacing:.25em;color:var(--txt);line-height:1}
+.logo-main .x{color:var(--p-vivid);text-shadow:0 0 20px var(--p-core);animation:glitchX 7s ease 2s infinite}
+.logo-sub{font-family:'Cinzel',serif;letter-spacing:.6em;color:var(--p-vivid);display:block;margin-top:6px}
+.logo-line{height:1px;background:linear-gradient(90deg,transparent,var(--p-core),transparent);margin:12px auto 0}
+@keyframes glitchX{0%,93%,100%{transform:none;text-shadow:0 0 20px var(--p-core)}94%{transform:translateX(-3px) skewX(-5deg);text-shadow:3px 0 var(--p-glow),-3px 0 var(--error)}96%{transform:translateX(3px);text-shadow:-3px 0 var(--p-glow),3px 0 var(--error)}98%{transform:none}}
+
+/* ── SCREENS ── */
+.screen{position:fixed;inset:0;z-index:10;display:none;flex-direction:column}
+.screen.active{display:flex}
+
+/* ══════════════════════════════════════════════
+   ONBOARDING
+══════════════════════════════════════════════ */
+#s-onboard{align-items:center;justify-content:flex-start;padding:60px 24px 100px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;pointer-events:none}
+#s-onboard.active{pointer-events:all}
+#s-onboard::-webkit-scrollbar{display:none}
+.onboard-logo{margin-bottom:52px}
+.onboard-logo .logo-main{font-size:clamp(48px,8vw,80px)}
+.onboard-logo .logo-sub{font-size:clamp(13px,2vw,19px);margin-top:8px}
+.onboard-logo .logo-line{width:clamp(100px,14vw,160px)}
+.manifesto{max-width:clamp(480px,55vw,720px);text-align:center;margin-bottom:60px}
+.mline{display:block;font-family:'Outfit',sans-serif;font-size:clamp(17px,1.8vw,22px);font-weight:300;line-height:2;color:var(--txt);opacity:0;transform:translateY(6px);margin-bottom:2px;text-shadow:0 0 12px rgba(232,216,255,.07)}
+.mline.bold{font-weight:500;color:var(--p-ghost)}
+.mline.spacer{margin-bottom:18px}
+.mline .hl{color:var(--p-vivid);font-style:italic;text-shadow:0 0 16px rgba(157,78,221,.6)}
+.mtagline{display:block;font-family:'Cinzel',serif;font-size:clamp(13px,1.4vw,17px);font-weight:600;letter-spacing:.35em;color:var(--p-glow);text-transform:uppercase;opacity:0;margin-top:32px;text-shadow:0 0 20px var(--p-core),0 0 40px var(--p-deep)}
+.skip-btn{position:fixed;bottom:28px;right:28px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt4);background:none;border:none;cursor:pointer;letter-spacing:.15em;opacity:0;animation:fadeIn .5s ease 4s forwards;padding:8px;pointer-events:all}
+.skip-btn:hover{color:var(--txt2)}
+.skip-btn::before{content:'→ '}
+@keyframes fadeIn{to{opacity:1}}
+
+/* ══════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════ */
+#s-login{align-items:center;justify-content:center;padding:40px 24px;overflow-y:auto}
+#s-login::-webkit-scrollbar{display:none}
+.login-logo{margin-bottom:36px}
+.login-logo .logo-main{font-size:clamp(32px,6vw,56px)}
+.login-logo .logo-sub{font-size:clamp(11px,1.5vw,16px)}
+.login-logo .logo-line{width:clamp(80px,10vw,130px)}
+.auth-card{width:100%;max-width:clamp(340px,36vw,480px);background:rgba(18,18,26,.8);backdrop-filter:blur(24px);border:1px solid var(--border);border-radius:3px;padding:clamp(28px,3vw,48px);position:relative;overflow:hidden;pointer-events:all}
+.auth-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--p-core),transparent)}
+.auth-card::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top,rgba(74,14,143,.12) 0%,transparent 70%);pointer-events:none}
+.auth-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:24px;position:relative;z-index:2}
+.auth-tab{flex:1;padding:11px;font-family:'JetBrains Mono',monospace;font-size:clamp(10px,1vw,13px);letter-spacing:.2em;text-transform:uppercase;color:var(--txt3);background:none;border:none;cursor:pointer;transition:all .3s;border-bottom:2px solid transparent;margin-bottom:-1px;pointer-events:all}
+.auth-tab.active{color:var(--p-vivid);border-bottom-color:var(--p-core)}
+.inp-label{font-family:'JetBrains Mono',monospace;font-size:clamp(10px,.9vw,12px);letter-spacing:.2em;color:var(--txt2);text-transform:uppercase;display:block;margin-bottom:7px;margin-top:14px}
+.inp-label:first-of-type{margin-top:0}
+.inp-wrap{position:relative}
+.inp{width:100%;background:rgba(5,5,8,.8);border:1px solid var(--border);border-radius:2px;padding:12px 44px 12px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--txt);outline:none;transition:border-color .3s,box-shadow .3s}
+.inp::placeholder{color:var(--txt4)}
+.inp:focus{border-color:var(--p-core);box-shadow:0 0 0 1px rgba(123,47,190,.25)}
+.eye-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--txt3);cursor:pointer;font-size:14px;padding:4px;pointer-events:all}
+.inp-status{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;margin-top:5px;min-height:16px;transition:all .3s}
+.inp-status.ok{color:var(--success)}
+.inp-status.err{color:var(--error)}
+.btn-main{width:100%;background:linear-gradient(135deg,var(--p-deep),var(--p-core));border:1px solid var(--p-core);border-radius:2px;padding:clamp(13px,1.5vh,18px);font-family:'Cinzel',serif;font-size:clamp(11px,1vw,14px);font-weight:600;letter-spacing:.28em;color:var(--txt);cursor:pointer;position:relative;overflow:hidden;transition:all .3s;text-transform:uppercase;margin-top:18px;pointer-events:all}
+.btn-main::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--p-core),var(--p-vivid));opacity:0;transition:opacity .3s}
+.btn-main:hover::before{opacity:1}
+.btn-main:hover{box-shadow:0 0 24px rgba(123,47,190,.4)}
+.btn-main span{position:relative;z-index:1}
+.auth-footer-txt{margin-top:14px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);letter-spacing:.1em}
+.auth-footer-txt button{background:none;border:none;color:var(--p-vivid);cursor:pointer;font-family:inherit;font-size:inherit;letter-spacing:inherit;pointer-events:all}
+.replay-btn{display:block;margin:18px auto 0;background:none;border:none;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt4);cursor:pointer;letter-spacing:.2em;padding:8px;pointer-events:all;transition:color .3s}
+.replay-btn:hover{color:var(--p-vivid)}
+
+/* ══════════════════════════════════════════════
+   APP SHELL
+══════════════════════════════════════════════ */
+#s-app{flex-direction:row;pointer-events:none}
+#s-app.active{pointer-events:all}
+.sidebar{width:clamp(180px,16vw,240px);flex-shrink:0;background:rgba(8,8,14,.98);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;z-index:20;pointer-events:all}
+.sb-logo{padding:0 18px 20px;border-bottom:1px solid var(--border)}
+.sb-logo .logo-main{font-size:clamp(17px,1.6vw,24px);letter-spacing:.18em}
+.sb-logo .logo-sub{font-size:clamp(9px,.85vw,12px)}
+.sb-logo .logo-line{width:100%;margin-top:8px}
+.sb-nav{flex:1;padding:16px 0}
+.nav-section{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.3em;color:var(--txt4);text-transform:uppercase;padding:0 18px;margin:14px 0 5px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;font-family:'JetBrains Mono',monospace;font-size:clamp(10px,.9vw,13px);letter-spacing:.08em;color:var(--txt2);cursor:pointer;transition:all .2s;border-left:2px solid transparent;text-transform:uppercase;pointer-events:all}
+.nav-item:hover{color:var(--txt);background:rgba(123,47,190,.06)}
+.nav-item.active{color:var(--p-vivid);border-left-color:var(--p-core);background:rgba(123,47,190,.08)}
+.nav-icon{font-size:14px;width:16px;text-align:center}
+.sb-footer{padding:14px 18px;border-top:1px solid var(--border)}
+.user-info{display:flex;align-items:center;gap:10px}
+.user-av{width:30px;height:30px;border-radius:2px;background:linear-gradient(135deg,var(--p-deep),var(--p-core));display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-size:12px;font-weight:600;flex-shrink:0}
+.user-email{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.user-plan{font-size:8px;color:var(--p-vivid);letter-spacing:.15em}
+.main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;pointer-events:all}
+.topbar{height:clamp(48px,6vh,64px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,2vw,28px);flex-shrink:0;background:rgba(5,5,8,.7);backdrop-filter:blur(12px)}
+.topbar-title{font-family:'Cinzel',serif;font-size:clamp(13px,1.2vw,17px);letter-spacing:.15em;color:var(--txt);text-shadow:0 0 20px rgba(199,125,255,.2)}
+.topbar-actions{display:flex;gap:8px}
+.btn-sm{padding:clamp(6px,.7vh,9px) clamp(12px,1.2vw,18px);font-family:'JetBrains Mono',monospace;font-size:clamp(9px,.8vw,12px);letter-spacing:.15em;text-transform:uppercase;border-radius:2px;cursor:pointer;transition:all .2s;pointer-events:all}
+.btn-sm.ghost{background:none;border:1px solid var(--border);color:var(--txt2)}
+.btn-sm.ghost:hover{border-color:var(--p-core);color:var(--p-vivid)}
+.btn-sm.primary{background:var(--p-core);border:1px solid var(--p-core);color:var(--txt)}
+.btn-sm.primary:hover{background:var(--p-vivid);box-shadow:0 0 14px rgba(123,47,190,.3)}
+.page-content{flex:1;overflow-y:auto;padding:clamp(16px,2.5vw,32px);scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.page-content::-webkit-scrollbar{width:3px}
+.page-content::-webkit-scrollbar-thumb{background:var(--border)}
+
+/* ── DASHBOARD ── */
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(10px,1.5vw,18px);margin-bottom:clamp(16px,2.5vh,28px)}
+.stat-card{background:rgba(18,18,26,.8);border:1px solid var(--border);border-radius:2px;padding:clamp(14px,1.8vw,24px);position:relative;overflow:hidden;transition:border-color .3s}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--p-core),transparent);opacity:0;transition:opacity .3s}
+.stat-card:hover::before{opacity:1}
+.stat-label{font-family:'JetBrains Mono',monospace;font-size:clamp(9px,.8vw,11px);letter-spacing:.2em;color:var(--txt3);text-transform:uppercase;margin-bottom:7px}
+.stat-value{font-family:'Cinzel',serif;font-size:clamp(22px,2.5vw,36px);font-weight:600;line-height:1;color:var(--txt);text-shadow:0 0 20px rgba(199,125,255,.2)}
+.stat-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--txt4);margin-top:4px}
+.section-title{font-family:'Cinzel',serif;font-size:clamp(12px,1vw,15px);letter-spacing:.2em;color:var(--txt);margin-bottom:clamp(10px,1.5vh,18px);display:flex;align-items:center;gap:10px;text-shadow:0 0 20px rgba(199,125,255,.2)}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.cta-card{background:linear-gradient(135deg,rgba(74,14,143,.2),rgba(123,47,190,.1));border:1px solid rgba(123,47,190,.3);border-radius:2px;padding:clamp(18px,2.5vw,32px);margin-bottom:clamp(16px,2.5vh,28px);display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;cursor:pointer;transition:all .3s;pointer-events:all}
+.cta-card:hover{border-color:var(--p-core);box-shadow:0 0 24px rgba(123,47,190,.12)}
+.cta-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--p-glow),transparent)}
+.cta-card h2{font-family:'Cinzel',serif;font-size:clamp(15px,1.5vw,22px);letter-spacing:.08em;margin-bottom:5px}
+.cta-card p{font-family:'JetBrains Mono',monospace;font-size:clamp(9px,.85vw,12px);color:var(--txt2);letter-spacing:.08em}
+.cta-glyph{font-size:36px;opacity:.12;position:absolute;right:24px}
+.videos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:clamp(10px,1.5vw,18px)}
+.video-card{background:rgba(18,18,26,.8);border:1px solid var(--border);border-radius:2px;overflow:hidden;cursor:pointer;transition:all .3s;pointer-events:all}
+.video-card:hover{border-color:rgba(123,47,190,.4);transform:translateY(-2px)}
+.video-thumb{height:clamp(90px,10vw,140px);background:linear-gradient(135deg,var(--p-abyss),var(--void));display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.video-thumb-glyph{font-size:28px;opacity:.18}
+.video-thumb-ov{position:absolute;inset:0;background:linear-gradient(to bottom,transparent 50%,rgba(5,5,8,.8))}
+.v-status{position:absolute;top:8px;right:8px;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;padding:3px 7px;border-radius:1px;text-transform:uppercase}
+.v-done{background:rgba(0,245,160,.12);color:var(--success);border:1px solid rgba(0,245,160,.25)}
+.v-proc{background:rgba(255,184,0,.12);color:var(--warning);border:1px solid rgba(255,184,0,.25)}
+.v-err{background:rgba(255,51,102,.12);color:var(--error);border:1px solid rgba(255,51,102,.25)}
+.video-info{padding:10px 12px}
+.video-title{font-family:'Outfit',sans-serif;font-size:clamp(13px,1.1vw,15px);color:var(--txt);margin-bottom:4px;line-height:1.3}
+.video-meta{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--txt4);display:flex;gap:8px}
+.v-niche{color:var(--p-vivid)}
+
+/* ── CREATE PAGE ── */
+.steps{display:flex;align-items:center;margin-bottom:clamp(14px,2vh,24px)}
+.step{display:flex;align-items:center;gap:7px}
+.step-n{width:22px;height:22px;border-radius:1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:9px;border:1px solid var(--border);color:var(--txt3);transition:all .3s}
+.step.active .step-n{background:var(--p-core);border-color:var(--p-core);color:var(--txt);box-shadow:0 0 10px rgba(123,47,190,.35)}
+.step.done .step-n{background:rgba(0,245,160,.08);border-color:var(--success);color:var(--success)}
+.step-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--txt3);text-transform:uppercase}
+.step.active .step-label{color:var(--p-vivid)}
+.step-line{flex:1;height:1px;background:var(--border);margin:0 8px;max-width:32px}
+.create-layout{display:grid;grid-template-columns:1fr clamp(240px,26vw,300px);gap:clamp(14px,2vw,22px)}
+.create-main{display:flex;flex-direction:column;gap:clamp(12px,1.5vh,18px)}
+.form-card{background:rgba(18,18,26,.8);border:1px solid var(--border);border-radius:2px;padding:clamp(14px,1.8vw,24px);position:relative}
+.form-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--p-core),transparent)}
+.form-card-title{font-family:'JetBrains Mono',monospace;font-size:clamp(9px,.85vw,12px);letter-spacing:.18em;color:var(--txt2);text-transform:uppercase;margin-bottom:clamp(10px,1.2vh,16px)}
+.topic-inp{width:100%;background:rgba(5,5,8,.6);border:1px solid var(--border);border-radius:2px;padding:clamp(10px,1.2vw,16px);font-family:'Outfit',sans-serif;font-size:clamp(15px,1.3vw,19px);color:var(--txt);outline:none;resize:none;height:72px;transition:border-color .3s}
+.topic-inp::placeholder{color:var(--txt4);font-style:italic}
+.topic-inp:focus{border-color:var(--p-core);box-shadow:0 0 0 1px rgba(123,47,190,.18)}
+.pills{display:flex;flex-wrap:wrap;gap:7px}
+.pill{padding:5px 11px;border-radius:1px;font-family:'JetBrains Mono',monospace;font-size:clamp(8px,.8vw,11px);letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--border);color:var(--txt3);cursor:pointer;transition:all .2s;pointer-events:all}
+.pill:hover{border-color:var(--p-core);color:var(--p-vivid)}
+.pill.sel{background:rgba(123,47,190,.14);border-color:var(--p-core);color:var(--p-vivid);font-weight:700}
+.dur-slider{width:100%;accent-color:var(--p-core);cursor:pointer;margin-bottom:5px}
+.dur-labels{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--txt3)}
+.preview-panel{display:flex;flex-direction:column;gap:clamp(10px,1.5vh,16px)}
+.panel-card{background:rgba(18,18,26,.8);border:1px solid var(--border);border-radius:2px;padding:clamp(12px,1.5vw,20px)}
+.panel-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--txt3);text-transform:uppercase;margin-bottom:clamp(10px,1.2vh,16px)}
+.video-preview{width:100%;aspect-ratio:9/16;background:var(--void);border:1px solid var(--border);border-radius:2px;display:flex;align-items:center;justify-content:center;max-height:260px;overflow:hidden}
+.cfg-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.cfg-row:last-child{border-bottom:none}
+.cfg-k{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--txt3);letter-spacing:.1em;text-transform:uppercase}
+.cfg-v{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--p-vivid)}
+
+/* ── HISTORY ── */
+.history-list{display:flex;flex-direction:column;gap:10px}
+.h-item{background:rgba(18,18,26,.8);border:1px solid var(--border);border-radius:2px;padding:clamp(12px,1.3vw,18px);display:flex;align-items:center;gap:12px;transition:all .2s;pointer-events:all}
+.h-item:hover{border-color:rgba(123,47,190,.3)}
+.h-thumb{width:38px;height:38px;background:linear-gradient(135deg,var(--p-abyss),var(--void));border-radius:1px;display:flex;align-items:center;justify-content:center;font-size:14px;opacity:.5;flex-shrink:0}
+.h-info{flex:1}
+.h-title{font-family:'Outfit',sans-serif;font-size:clamp(13px,1.2vw,16px);color:var(--txt);margin-bottom:3px}
+.h-meta{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--txt3);display:flex;gap:8px}
+.h-actions{display:flex;gap:6px}
+.btn-icon{width:28px;height:28px;background:none;border:1px solid var(--border);border-radius:2px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt3);font-size:11px;transition:all .2s;pointer-events:all}
+.btn-icon:hover{border-color:var(--p-core);color:var(--p-vivid)}
+
+/* ── RESULTADO ── */
+#page-resultado{display:none}
+.result-wrap{display:flex;flex-direction:column;align-items:center;gap:20px;padding:10px 0}
+.video-player-wrap{width:100%;max-width:340px;aspect-ratio:9/16;background:var(--void);border:1px solid var(--border);border-radius:3px;overflow:hidden;position:relative;max-height:600px}
+.video-player-wrap video{width:100%;height:100%;object-fit:cover}
+.result-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.btn-result{padding:12px 24px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;border-radius:2px;cursor:pointer;transition:all .3s;pointer-events:all}
+.btn-result.dl{background:var(--p-core);border:1px solid var(--p-core);color:var(--txt)}
+.btn-result.dl:hover{background:var(--p-vivid);box-shadow:0 0 20px rgba(123,47,190,.4)}
+.btn-result.new{background:none;border:1px solid var(--border);color:var(--txt2)}
+.btn-result.new:hover{border-color:var(--p-core);color:var(--p-vivid)}
+.seo-box{width:100%;max-width:520px;background:rgba(18,18,26,.8);border:1px solid var(--border);border-radius:2px;padding:18px;display:none}
+.seo-tabs{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+.seo-tab{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;padding:4px 10px;border-radius:1px;border:1px solid var(--border);color:var(--txt3);cursor:pointer;transition:all .2s;text-transform:uppercase;pointer-events:all}
+.seo-tab.active{border-color:var(--p-core);color:var(--p-vivid)}
+.seo-title{font-family:'Outfit',sans-serif;font-size:14px;color:var(--txt);margin-bottom:8px}
+.seo-desc{font-size:11px;color:var(--txt3);margin-bottom:8px}
+.hashtag-list{display:flex;flex-wrap:wrap;gap:5px}
+.hashtag{font-size:9px;color:var(--p-vivid);background:rgba(123,47,190,.1);padding:3px 7px;border-radius:1px;border:1px solid rgba(123,47,190,.2)}
+
+/* ── PROCESSING ── */
+#proc-overlay{position:fixed;inset:0;z-index:200;background:rgba(5,5,8,.97);display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px}
+#proc-overlay.show{display:flex}
+.proc-logo{font-family:'Cinzel',serif;font-size:clamp(18px,2vw,28px);font-weight:900;letter-spacing:.3em}
+.proc-sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.3em;color:var(--txt3)}
+.proc-steps{display:flex;flex-direction:column;gap:clamp(10px,1.5vh,16px);width:clamp(260px,28vw,360px)}
+.proc-step{display:flex;align-items:center;gap:12px;opacity:.22;transition:opacity .4s}
+.proc-step.active{opacity:1}
+.proc-step.done{opacity:.45}
+.proc-dot{width:7px;height:7px;border-radius:50%;background:var(--border);flex-shrink:0;transition:all .4s}
+.proc-step.active .proc-dot{background:var(--p-vivid);box-shadow:0 0 10px var(--p-core);animation:dotP 1s ease-in-out infinite}
+.proc-step.done .proc-dot{background:var(--success);animation:none}
+@keyframes dotP{0%,100%{transform:scale(1)}50%{transform:scale(1.5);box-shadow:0 0 14px var(--p-vivid)}}
+.proc-label{font-family:'JetBrains Mono',monospace;font-size:clamp(10px,.95vw,13px);letter-spacing:.14em;color:var(--txt2);text-transform:uppercase}
+.proc-step.active .proc-label{color:var(--txt)}
+.proc-bar-wrap{width:clamp(260px,28vw,360px);height:1px;background:var(--border)}
+.proc-bar{height:100%;background:linear-gradient(90deg,var(--p-deep),var(--p-glow));width:0%;transition:width .5s;box-shadow:0 0 6px var(--p-core)}
+
+/* ── EASTER EGG PARTICLE ── */
+.arcane-p{position:fixed;font-family:'Cinzel',serif;font-size:16px;color:var(--p-deep);pointer-events:all;z-index:8;cursor:pointer;user-select:none;transition:color .5s,text-shadow .5s,transform .5s}
+.arcane-p.aware{color:var(--p-vivid);text-shadow:0 0 20px var(--p-core),0 0 40px var(--p-deep);transform:scale(1.4)}
+.arcane-p.recognized{color:var(--p-glow);text-shadow:0 0 30px var(--p-vivid),0 0 60px var(--p-core);transform:scale(1.8);animation:pBreath 2s ease-in-out infinite}
+@keyframes pBreath{0%,100%{transform:scale(1.8)}50%{transform:scale(2.2)}}
+.arcane-ins{position:fixed;font-family:'JetBrains Mono',monospace;font-size:8px;color:rgba(199,125,255,.04);letter-spacing:.3em;pointer-events:none;z-index:9;text-align:center;width:200px;transform:translate(-50%,-130%);transition:color .8s;white-space:nowrap}
+.arcane-ins.vis{color:rgba(199,125,255,.35)}
+
+/* ── TERMINAL ── */
+#terminal{position:fixed;inset:0;z-index:100;background:#050508;display:none;flex-direction:column;overflow:hidden}
+#terminal.open{display:flex}
+.term-header{font-family:'JetBrains Mono',monospace;font-size:clamp(8px,.8vw,11px);color:var(--p-core);letter-spacing:.2em;padding:clamp(18px,2.5vh,30px) clamp(20px,3vw,44px) clamp(12px,1.5vh,18px);opacity:.6;flex-shrink:0;border-bottom:1px solid rgba(123,47,190,.15)}
+.term-mask-top{position:absolute;top:57px;left:0;right:0;height:70px;background:linear-gradient(to bottom,#050508 0%,transparent 100%);z-index:10;pointer-events:none}
+.term-mask-bot{position:absolute;bottom:50px;left:0;right:0;height:100px;background:linear-gradient(to top,#050508 0%,transparent 100%);z-index:10;pointer-events:none}
+.term-viewport{flex:1;overflow:hidden;position:relative;padding:0 clamp(20px,3vw,44px)}
+.term-track{display:flex;flex-direction:column;will-change:transform;padding-top:70px}
+.term-body{font-family:'JetBrains Mono',monospace;font-size:clamp(12px,1.1vw,15px);line-height:2.1}
+.tl{display:block;opacity:0;transition:opacity .6s ease;min-height:1.4em}
+.tl.vis{opacity:1}
+.tl.dim{color:var(--txt4)}
+.tl.bright{color:#F0F0FF;text-shadow:0 0 10px rgba(232,232,240,.35)}
+.tl.red{color:var(--error);text-shadow:0 0 10px rgba(255,51,102,.4)}
+.tl.ok{color:var(--success);text-shadow:0 0 10px rgba(0,245,160,.4)}
+.tl.kh{color:var(--p-vivid);text-shadow:0 0 8px rgba(157,78,221,.5)}
+.tl.lore{color:#C0C0D8;font-family:'Outfit',sans-serif;font-size:clamp(14px,1.3vw,18px);font-style:italic;line-height:2.1}
+.tl.lore-a{color:#B088EE;font-family:'Outfit',sans-serif;font-size:clamp(13px,1.2vw,16px)}
+.tl.sp{min-height:18px}
+.term-prog{position:absolute;bottom:48px;left:clamp(20px,3vw,44px);right:clamp(20px,3vw,44px);height:1px;background:rgba(123,47,190,.15);z-index:15}
+.term-prog-fill{height:100%;background:linear-gradient(90deg,var(--p-deep),var(--p-glow));width:0%;transition:width .3s;box-shadow:0 0 6px var(--p-core)}
+.term-input-wrap{display:none;align-items:center;gap:8px;padding:8px clamp(20px,3vw,44px);border-top:1px solid rgba(123,47,190,.15);flex-shrink:0}
+.term-input-wrap.show{display:flex}
+.term-input-prompt{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--p-vivid)}
+.term-input{background:none;border:none;border-bottom:1px solid var(--p-core);color:var(--p-glow);font-family:'JetBrains Mono',monospace;font-size:14px;padding:4px 8px;outline:none;width:120px;letter-spacing:.2em}
+.term-close{position:fixed;top:clamp(18px,2.5vh,30px);right:clamp(20px,3vw,44px);font-family:'JetBrains Mono',monospace;font-size:clamp(9px,.9vw,12px);color:var(--txt3);background:none;border:none;cursor:pointer;letter-spacing:.2em;padding:8px;pointer-events:all;transition:color .3s;z-index:110}
+.term-close:hover{color:var(--error)}
+
+/* ── PORTAL & GLITCH ── */
+.portal-ov{position:fixed;inset:0;z-index:99;pointer-events:none;opacity:0}
+.portal-ov.active{animation:portalOpen 3s ease forwards}
+@keyframes portalOpen{0%{opacity:0;background:transparent}30%{background:rgba(74,14,143,.3)}60%{background:rgba(30,10,60,.7)}90%{background:rgba(5,5,8,.97)}100%{opacity:1;background:rgba(5,5,8,1)}}
+.glitch-ov{position:fixed;inset:0;z-index:98;pointer-events:none;opacity:0;background:linear-gradient(transparent 45%,rgba(123,47,190,.15) 45%,rgba(123,47,190,.15) 55%,transparent 55%)}
+.glitch-ov.active{animation:glitchF .3s ease forwards}
+@keyframes glitchF{0%{opacity:0}20%{opacity:1;transform:translateX(-4px)}40%{opacity:.5;transform:translateX(4px)}60%{opacity:1;transform:translateX(-2px)}100%{opacity:0}}
+
+/* ── OVERLAYS ── */
+/* Coordenada Chave 1 */
+#coord-flash{position:fixed;inset:0;z-index:400;display:none;align-items:center;justify-content:center;background:rgba(5,5,8,.96);pointer-events:none}
+#coord-flash.show{display:flex;animation:fadeIn .5s ease forwards}
+.coord-box{border:1px solid var(--p-core);padding:clamp(24px,3vw,40px) clamp(32px,4vw,56px);text-align:center;position:relative;box-shadow:0 0 40px rgba(123,47,190,.2),inset 0 0 40px rgba(123,47,190,.05)}
+.coord-box::before{content:'> ARQUIVO_AR — COORDENADA ENCONTRADA';position:absolute;top:-10px;left:20px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--p-core);letter-spacing:.2em;background:rgba(5,5,8,.98);padding:0 8px}
+.coord-txt{font-family:'JetBrains Mono',monospace;font-size:clamp(16px,2.5vw,26px);color:var(--p-glow);letter-spacing:.25em;text-shadow:0 0 20px var(--p-core);line-height:1.8}
+.coord-sub{font-family:'JetBrains Mono',monospace;font-size:clamp(9px,1vw,12px);color:var(--txt3);letter-spacing:.2em;margin-top:12px;display:block}
+.coord-blink{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--txt4);letter-spacing:.2em;margin-top:18px;display:block;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* Chave 3 overlay */
+#chave3-ov{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center;background:rgba(5,5,8,.96)}
+#chave3-ov.show{display:flex}
+.chave3-box{background:rgba(18,18,26,.98);border:1px solid var(--p-core);border-radius:2px;padding:32px;width:clamp(280px,32vw,360px);text-align:center;box-shadow:0 0 40px rgba(123,47,190,.3)}
+.chave3-glyph{font-size:32px;color:var(--p-glow);text-shadow:0 0 20px var(--p-core);margin-bottom:16px;display:block}
+.chave3-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;color:var(--txt3);margin-bottom:14px;display:block}
+.chave3-inp{width:100%;background:rgba(5,5,8,.8);border:1px solid var(--border);border-radius:2px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--txt);outline:none;text-align:center;letter-spacing:.1em;margin-bottom:12px;cursor:text}
+.chave3-inp:focus{border-color:var(--p-core)}
+.chave3-btn{width:100%;background:var(--p-core);border:1px solid var(--p-core);border-radius:2px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--txt);cursor:pointer;pointer-events:all}
+.chave3-btn:hover{background:var(--p-vivid)}
+.chave3-cancel{margin-top:10px;background:none;border:none;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);cursor:pointer;letter-spacing:.15em;pointer-events:all}
+
+/* Frame oculto chave 2 */
+#frame-oculto{position:absolute;inset:0;z-index:10;display:none;align-items:center;justify-content:center;background:#000;pointer-events:none}
+#frame-oculto.show{display:flex}
+.frame-code{font-family:'JetBrains Mono',monospace;font-size:clamp(14px,2.5vw,26px);color:#fff;letter-spacing:.3em;text-shadow:0 0 10px rgba(255,255,255,.5)}
+
+/* AR Arquivo overlay */
+#ar-ov{position:fixed;inset:0;z-index:300;background:rgba(5,5,8,.98);display:none;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;overflow-y:auto}
+#ar-ov.show{display:flex}
+.ar-title{font-family:'Cinzel',serif;font-size:clamp(16px,2.5vw,26px);letter-spacing:.3em;color:var(--p-glow);text-shadow:0 0 20px var(--p-core);margin-bottom:8px;text-align:center}
+.ar-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);letter-spacing:.2em;margin-bottom:36px;text-align:center}
+.ar-msg{max-width:clamp(280px,50vw,520px);font-family:'Outfit',sans-serif;font-size:clamp(15px,1.5vw,19px);color:var(--txt2);line-height:2;white-space:pre-line;text-align:center;font-style:italic}
+.ar-msg .ar-sign{color:var(--p-vivid);font-style:normal;display:block;margin-top:14px}
+.ar-close{margin-top:36px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);background:none;border:1px solid var(--border);padding:10px 22px;border-radius:2px;cursor:pointer;letter-spacing:.2em;pointer-events:all;transition:all .3s}
+.ar-close:hover{border-color:var(--p-core);color:var(--p-vivid)}
+
+/* Key notification */
+.key-notif{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(18,18,26,.97);border:1px solid var(--p-core);border-radius:2px;padding:14px 22px;z-index:600;opacity:0;transition:all .4s;box-shadow:0 0 24px rgba(123,47,190,.3);text-align:center;min-width:260px;pointer-events:none}
+.key-notif.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.kn-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.3em;color:var(--p-glow);margin-bottom:5px;text-shadow:0 0 8px var(--p-core)}
+.kn-msg{font-family:'Outfit',sans-serif;font-size:13px;color:var(--txt2);font-style:italic}
+.kn-count{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--txt3);margin-top:6px;letter-spacing:.15em}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(14px);background:rgba(18,18,26,.96);border:1px solid var(--p-core);border-radius:2px;padding:10px 20px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--txt);z-index:600;opacity:0;transition:all .3s;box-shadow:0 0 18px rgba(123,47,190,.2);white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* Mute btn */
+#mute-btn{position:fixed;top:22px;left:22px;z-index:50;background:none;border:1px solid rgba(123,47,190,.3);color:rgba(123,47,190,.5);font-size:12px;width:28px;height:28px;border-radius:2px;cursor:pointer;transition:all .3s;padding:0;font-family:monospace;pointer-events:all}
+#mute-btn:hover{color:var(--p-vivid);border-color:var(--p-core);box-shadow:0 0 10px rgba(123,47,190,.3)}
+
+/* Footer */
+.app-footer{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:20;pointer-events:all}
+.footer-copy{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt4);cursor:pointer;letter-spacing:.2em;transition:color .3s;user-select:none}
+
+/* Responsive */
+@media(max-width:680px){
+  .sidebar{width:50px}
+  .sb-logo .logo-main,.sb-logo .logo-sub,.sb-logo .logo-line{display:none}
+  .nav-section{display:none}
+  .nav-item{padding:12px;justify-content:center}
+  .nav-item>span:last-child{display:none}
+  .sb-footer .user-email,.sb-footer .user-plan{display:none}
+  .create-layout{grid-template-columns:1fr}
+  .preview-panel{display:none}
+  .stats-grid{grid-template-columns:1fr 1fr}
+}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+
+</head>
+<body>
+<!-- BACKGROUNDS -->
+<canvas id="bg-canvas"></canvas>
+<div class="nebula"><div class="orb orb1"></div><div class="orb orb2"></div></div>
+<div class="noise"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<!-- CURSOR -->
+<div id="cur"></div>
+<div id="cur-ring"></div>
+
+<!-- MUTE -->
+<button id="mute-btn" title="Som">♪</button>
+
+<!-- FOOTER -->
+<div class="app-footer">
+  <span class="footer-copy" id="footerCopy">© Noxar Arcana</span>
+</div>
+
+<!-- ═══════════════════════════════════
+     TELA 1 — ONBOARDING
+═══════════════════════════════════ -->
+<div class="screen active" id="s-onboard">
+  <div class="onboard-logo logo-wrap">
+    <div class="logo-main">N<span>O</span><span class="x">X</span><span>A</span><span>R</span></div>
+    <span class="logo-sub">Arcana</span>
+    <div class="logo-line" style="width:120px"></div>
+  </div>
+  <div class="manifesto">
+    <span class="mline" data-d="600">Algumas histórias não querem ser contadas.</span>
+    <span class="mline" data-d="1800">Exatamente por isso precisam ser.</span>
+    <span class="mline spacer" data-d="3000">&nbsp;</span>
+    <span class="mline" data-d="3600">Em algum arquivo esquecido,</span>
+    <span class="mline" data-d="4400">existe um nome que foi <span class="hl">apagado</span>.</span>
+    <span class="mline" data-d="5400">Em algum silêncio forçado,</span>
+    <span class="mline" data-d="6200">existe uma verdade que ainda <span class="hl">respira</span>.</span>
+    <span class="mline spacer" data-d="7400">&nbsp;</span>
+    <span class="mline" data-d="7800">O mundo não falta em acontecimentos sombrios.</span>
+    <span class="mline bold" data-d="9000">Falta em quem tenha <span class="hl">coragem</span> de revelá-los.</span>
+    <span class="mline spacer bold" data-d="10200">Você encontrou algo que poucos sabem que existe.</span>
+    <span class="mline spacer" data-d="11200">&nbsp;</span>
+    <span class="mline bold" style="font-size:1.15em;letter-spacing:.12em" data-d="12000">Use com intenção.</span>
+    <span class="mtagline" data-d="13800">A escuridão que revela</span>
+  </div>
+  <button class="skip-btn" onclick="showScreen('s-login')">pular intro</button>
+</div>
+
+<!-- ═══════════════════════════════════
+     TELA 2 — LOGIN / CADASTRO
+═══════════════════════════════════ -->
+<div class="screen" id="s-login">
+  <div class="login-logo logo-wrap" style="margin-bottom:32px;margin-top:auto">
+    <div class="logo-main" style="font-size:clamp(32px,5vw,52px)">N<span>O</span><span class="x">X</span><span>A</span><span>R</span></div>
+    <span class="logo-sub" style="font-size:clamp(11px,1.3vw,15px)">Arcana</span>
+    <div class="logo-line" style="width:100px"></div>
+  </div>
+
+  <div class="auth-card">
+    <!-- TABS -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-entrar-btn" onclick="switchTab('entrar')" ontouchstart="switchTab('entrar')">Entrar</button>
+      <button class="auth-tab" id="tab-cadastrar-btn" onclick="switchTab('cadastrar')" ontouchstart="switchTab('cadastrar')">Cadastrar</button>
+    </div>
+
+    <!-- ENTRAR -->
+    <div id="tab-entrar">
+      <label class="inp-label">Email</label>
+      <input class="inp" id="login-email" type="email" placeholder="seu@email.com" autocomplete="email">
+      <label class="inp-label">Senha</label>
+      <div class="inp-wrap">
+        <input class="inp" id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+        <button class="eye-btn" onclick="togglePass('login-pass',this)">◉</button>
+      </div>
+      <div class="inp-status" id="login-status"></div>
+      <button class="btn-main" id="btn-entrar" onclick="doLogin()"><span>Entrar no Arcana</span></button>
+      <div class="auth-footer-txt">
+        Esqueceu a senha? <button onclick="doRecover()">Recuperar</button>
+      </div>
+    </div>
+
+    <!-- CADASTRAR -->
+    <div id="tab-cadastrar" style="display:none">
+      <label class="inp-label">Nome</label>
+      <input class="inp" id="reg-nome" type="text" placeholder="Como te chamamos?" autocomplete="name">
+      <label class="inp-label">Email</label>
+      <input class="inp" id="reg-email" type="email" placeholder="seu@email.com" autocomplete="email">
+      <label class="inp-label">Senha</label>
+      <input class="inp" id="reg-pass" type="password" placeholder="mínimo 6 caracteres" autocomplete="new-password">
+      <div class="inp-status" id="reg-status"></div>
+      <button class="btn-main" id="btn-reg" onclick="doRegister()"><span>Criar conta</span></button>
+    </div>
+  </div>
+
+  <button class="replay-btn" onclick="showScreen('s-onboard')">↺ rever manifesto</button>
+  <div style="margin-bottom:auto"></div>
+</div>
+
+<!-- ═══════════════════════════════════
+     TELA 3 — APP
+═══════════════════════════════════ -->
+<div class="screen" id="s-app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sb-logo logo-wrap">
+      <div class="logo-main" style="font-size:20px;letter-spacing:.18em">N<span>O</span><span class="x">X</span><span>A</span><span>R</span></div>
+      <span class="logo-sub" style="font-size:9px">Arcana</span>
+      <div class="logo-line"></div>
+    </div>
+    <nav class="sb-nav">
+      <div class="nav-section">Menu</div>
+      <div class="nav-item active" onclick="showPage('dashboard')">
+        <span class="nav-icon">◈</span><span>Dashboard</span>
+      </div>
+      <div class="nav-item" onclick="showPage('create')">
+        <span class="nav-icon">✦</span><span>Criar Vídeo</span>
+      </div>
+      <div class="nav-item" onclick="showPage('history')">
+        <span class="nav-icon">▦</span><span>Meus Vídeos</span>
+      </div>
+    </nav>
+    <div class="sb-footer">
+      <div class="user-info">
+        <div class="user-av" id="userInitial">A</div>
+        <div>
+          <div class="user-email" id="userEmailDisplay">carregando...</div>
+          <div class="user-plan">FREE</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-area">
+    <header class="topbar">
+      <span class="topbar-title" id="topbar-title">Dashboard</span>
+      <div class="topbar-actions">
+        <button class="btn-sm ghost" onclick="doLogout()">Sair</button>
+        <button class="btn-sm primary" onclick="showPage('create')">+ Novo</button>
+      </div>
+    </header>
+    <div class="page-content">
+
+      <!-- DASHBOARD -->
+      <div id="page-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Vídeos</div>
+            <div class="stat-value" id="stat-videos">0</div>
+            <div class="stat-sub">criados</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Plano</div>
+            <div class="stat-value" style="font-size:clamp(18px,2vw,26px)">FREE</div>
+            <div class="stat-sub">acesso total</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Status</div>
+            <div class="stat-value" style="font-size:clamp(13px,1.3vw,18px);color:var(--success)">Online</div>
+            <div class="stat-sub">todos sistemas</div>
+          </div>
+        </div>
+        <div class="cta-card" onclick="showPage('create')">
+          <div>
+            <h2>Criar novo vídeo</h2>
+            <p>Escolha um tema dark e gere em minutos</p>
+          </div>
+          <span class="cta-glyph">𖤍</span>
+        </div>
+        <div class="section-title">Recentes</div>
+        <div class="videos-grid" id="dash-videos">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt3);grid-column:1/-1;padding:24px 0">nenhum vídeo ainda</div>
+        </div>
+      </div>
+
+      <!-- CRIAR -->
+      <div id="page-create" style="display:none">
+        <div class="steps" style="margin-bottom:20px">
+          <div class="step active" id="step1"><div class="step-n">1</div><span class="step-label">Tema</span></div>
+          <div class="step-line"></div>
+          <div class="step" id="step2"><div class="step-n">2</div><span class="step-label">Estilo</span></div>
+          <div class="step-line"></div>
+          <div class="step" id="step3"><div class="step-n">3</div><span class="step-label">Config</span></div>
+          <div class="step-line"></div>
+          <div class="step" id="step4"><div class="step-n">4</div><span class="step-label">Gerar</span></div>
+        </div>
+        <div class="create-layout">
+          <div class="create-main">
+            <!-- Tema -->
+            <div class="form-card">
+              <div class="form-card-title">Tema do Vídeo</div>
+              <textarea class="topic-inp" id="topicInput" placeholder="Ex: O desaparecimento misterioso de uma cidade inteira no Brasil em 1987..."></textarea>
+            </div>
+            <!-- Nicho & Plataforma -->
+            <div class="form-card">
+              <div class="form-card-title">Nicho</div>
+              <div class="pills" id="pills-nicho">
+                <div class="pill sel" onclick="selPill(this,'nicho')">Mistério</div>
+                <div class="pill" onclick="selPill(this,'nicho')">True Crime</div>
+                <div class="pill" onclick="selPill(this,'nicho')">Terror</div>
+                <div class="pill" onclick="selPill(this,'nicho')">Dark History</div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="form-card-title">Plataforma</div>
+              <div class="pills" id="pills-plat">
+                <div class="pill sel" onclick="selPill(this,'plat')">TikTok</div>
+                <div class="pill" onclick="selPill(this,'plat')">YouTube</div>
+                <div class="pill" onclick="selPill(this,'plat')">Kwai</div>
+                <div class="pill" onclick="selPill(this,'plat')">Reels</div>
+              </div>
+            </div>
+            <!-- Persona & Template -->
+            <div class="form-card">
+              <div class="form-card-title">Persona</div>
+              <div class="pills" id="pills-persona">
+                <div class="pill sel" onclick="selPill(this,'persona')">Contador</div>
+                <div class="pill" onclick="selPill(this,'persona')">Investigador</div>
+                <div class="pill" onclick="selPill(this,'persona')">Informante</div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="form-card-title">Template</div>
+              <div class="pills" id="pills-template">
+                <div class="pill sel" onclick="selPill(this,'template')">🟣 Névoa</div>
+                <div class="pill" onclick="selPill(this,'template')">🔴 Sangue Frio</div>
+                <div class="pill" onclick="selPill(this,'template')" id="pill-abismo">⚫ Abismo</div>
+              </div>
+            </div>
+            <!-- Duração -->
+            <div class="form-card">
+              <div class="form-card-title">Duração — <span id="dur-label" style="color:var(--p-vivid)">60s</span></div>
+              <input class="dur-slider" type="range" id="durSlider" min="15" max="180" value="60" step="15" oninput="updDur(this.value)">
+              <div class="dur-labels"><span>15s</span><span>60s</span><span>120s</span><span>180s</span></div>
+            </div>
+            <!-- GERAR -->
+            <button class="btn-main" onclick="startProcessing()" style="margin-top:4px">
+              <span>✦ Gerar Vídeo</span>
+            </button>
+          </div>
+          <!-- Preview -->
+          <div class="preview-panel">
+            <div class="panel-card">
+              <div class="panel-title">Preview 9:16</div>
+              <div class="video-preview" id="vPreview">
+                <div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt4)">
+                  𖤍<br><br>9:16
+                </div>
+              </div>
+            </div>
+            <div class="panel-card">
+              <div class="panel-title">Configuração</div>
+              <div class="cfg-row"><span class="cfg-k">Nicho</span><span class="cfg-v" id="cfg-nicho">Mistério</span></div>
+              <div class="cfg-row"><span class="cfg-k">Plataforma</span><span class="cfg-v" id="cfg-plat">TikTok</span></div>
+              <div class="cfg-row"><span class="cfg-k">Persona</span><span class="cfg-v" id="cfg-persona">Contador</span></div>
+              <div class="cfg-row"><span class="cfg-k">Template</span><span class="cfg-v" id="cfg-template">Névoa</span></div>
+              <div class="cfg-row"><span class="cfg-k">Duração</span><span class="cfg-v" id="cfg-dur">60s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTÓRICO -->
+      <div id="page-history" style="display:none">
+        <div class="section-title">Meus Vídeos</div>
+        <div class="history-list" id="history-list">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt3);padding:24px 0">carregando...</div>
+        </div>
+      </div>
+
+      <!-- RESULTADO -->
+      <div id="page-resultado" style="display:none">
+        <div class="result-wrap">
+          <div class="video-player-wrap" id="vPlayerWrap">
+            <video id="vPlayer" controls playsinline>
+              <source id="vSource" src="" type="video/mp4">
+            </video>
+            <div id="frame-oculto"><div class="frame-code">AR-2847-FINAL</div></div>
+          </div>
+          <div class="result-actions">
+            <button class="btn-result dl" onclick="downloadVideo()">↓ Baixar MP4</button>
+            <button class="btn-result new" onclick="showPage('create')">+ Novo Vídeo</button>
+          </div>
+          <div class="seo-box" id="seoBox">
+            <div class="seo-tabs">
+              <div class="seo-tab active" onclick="showSeoTab('tiktok',this)">TikTok</div>
+              <div class="seo-tab" onclick="showSeoTab('youtube',this)">YouTube</div>
+              <div class="seo-tab" onclick="showSeoTab('kwai',this)">Kwai</div>
+              <div class="seo-tab" onclick="showSeoTab('reels',this)">Reels</div>
+            </div>
+            <div id="seoContent"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-content -->
+  </div><!-- /main-area -->
+</div><!-- /s-app -->
+
+<!-- ═══════════════════════════════════
+     OVERLAYS GLOBAIS
+═══════════════════════════════════ -->
+
+<!-- Processing -->
+<div id="proc-overlay">
+  <div class="proc-logo">N<span style="color:var(--p-vivid)">O</span>XAR</div>
+  <div class="proc-sub">> gerando arquivo...</div>
+  <div class="proc-steps">
+    <div class="proc-step active" id="ps1"><div class="proc-dot"></div><span class="proc-label">Gerando roteiro</span></div>
+    <div class="proc-step" id="ps2"><div class="proc-dot"></div><span class="proc-label">Criando imagens</span></div>
+    <div class="proc-step" id="ps3"><div class="proc-dot"></div><span class="proc-label">Sintetizando narração</span></div>
+    <div class="proc-step" id="ps4"><div class="proc-dot"></div><span class="proc-label">Sincronizando legendas</span></div>
+    <div class="proc-step" id="ps5"><div class="proc-dot"></div><span class="proc-label">Montagem final</span></div>
+  </div>
+  <div class="proc-bar-wrap"><div class="proc-bar" id="procBar"></div></div>
+</div>
+
+<!-- Coordenada Chave 1 -->
+<div id="coord-flash">
+  <div class="coord-box">
+    <div class="coord-txt">40.7128° N, 74.0060° W</div>
+    <span class="coord-sub">1987 — localização removida dos registros</span>
+    <span class="coord-blink">[ memorize antes que suma ]</span>
+  </div>
+</div>
+
+<!-- Chave 3 -->
+<div id="chave3-ov">
+  <div class="chave3-box">
+    <span class="chave3-glyph">𖤍</span>
+    <span class="chave3-label">o que ainda respira?</span>
+    <input class="chave3-inp" id="chave3Input" type="text" placeholder="_ _ _ _ _ _ _ _ _ _ _ _"
+      onkeydown="if(event.key==='Enter')confirmarChave3()">
+    <button class="chave3-btn" onclick="confirmarChave3()">Confirmar</button>
+    <button class="chave3-cancel" onclick="document.getElementById('chave3-ov').classList.remove('show')">cancelar</button>
+  </div>
+</div>
+
+<!-- AR Arquivo -->
+<div id="ar-ov">
+  <div class="ar-title">𖤍 ARQUIVO A.R.</div>
+  <div class="ar-sub">> acesso concedido — arquivo desbloqueado</div>
+  <div class="ar-msg" id="arMsg">carregando...</div>
+  <button class="ar-close" onclick="document.getElementById('ar-ov').classList.remove('show')">[ fechar arquivo ]</button>
+</div>
+
+<!-- Key notification -->
+<div class="key-notif" id="keyNotif">
+  <div class="kn-title" id="knTitle">𖤍 CHAVE ENCONTRADA</div>
+  <div class="kn-msg" id="knMsg"></div>
+  <div class="kn-count" id="knCount"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Easter egg: partícula flutuante — FORA de todos os containers -->
+<div class="arcane-p" id="arcaneP">𖤍</div>
+<div class="arcane-ins" id="arcaneIns">você não deveria ter visto isso</div>
+
+<!-- Portal & Glitch -->
+<div class="portal-ov" id="portalOv"></div>
+<div class="glitch-ov" id="glitchOv"></div>
+
+<!-- Terminal -->
+<div id="terminal">
+  <div class="term-header">> NOXAR ARCANA — ARQUIVO RESTRITO — ACESSO NÃO AUTORIZADO DETECTADO</div>
+  <button class="term-close" onclick="closeTerminal()">[ ESC ]</button>
+  <div class="term-mask-top"></div>
+  <div class="term-mask-bot"></div>
+  <div class="term-viewport" id="termViewport">
+    <div class="term-track" id="termTrack">
+      <div class="term-body" id="termBody"></div>
+    </div>
+  </div>
+  <div class="term-prog"><div class="term-prog-fill" id="termProg"></div></div>
+  <div class="term-input-wrap" id="termInputWrap">
+    <span class="term-input-prompt">> </span>
+    <input class="term-input" id="termInput" type="text" placeholder="_ _ _ _" maxlength="20"
+      onkeydown="if(event.key==='Enter')checkKey4(this.value)">
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// CONFIGURAÇÃO
+// ════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://ekhulndagwuhbzgihcst.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVraHVsbmRhZ3d1aGJ6Z2loY3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NDg5MzIsImV4cCI6MjA4OTIyNDkzMn0.0JHT-hD_GvXgK3RU6mp69_l7Qa9NCWtlgCDBMhGEZo4';
+const BACKEND_URL   = 'https://noxar-arcana-backend.onrender.com';
+
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+let _session = null, _profile = null, _keysStatus = null;
+
+// ════════════════════════════════════════════════════════
+// CURSOR CUSTOMIZADO
+// ════════════════════════════════════════════════════════
+const cur = document.getElementById('cur');
+const curR = document.getElementById('cur-ring');
+let mx = 0, my = 0, rx = 0, ry = 0;
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+(function animCursor() {
+  rx += (mx - rx) * 0.15; ry += (my - ry) * 0.15;
+  if (cur)  { cur.style.left = mx+'px';  cur.style.top = my+'px'; }
+  if (curR) { curR.style.left = rx+'px'; curR.style.top = ry+'px'; }
+  requestAnimationFrame(animCursor);
+})();
+document.querySelectorAll('button,input,textarea,.pill,.nav-item,.auth-tab').forEach(el => {
+  el.addEventListener('mouseenter', () => { if(cur) cur.style.transform='translate(-50%,-50%) scale(1.6)'; if(curR) curR.style.width='46px',curR.style.height='46px'; });
+  el.addEventListener('mouseleave', () => { if(cur) cur.style.transform='translate(-50%,-50%) scale(1)'; if(curR) curR.style.width='32px',curR.style.height='32px'; });
+});
+
+// ════════════════════════════════════════════════════════
+// CANVAS PARTÍCULAS
+// ════════════════════════════════════════════════════════
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+let pts = [];
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+for (let i = 0; i < 80; i++) pts.push({
+  x: Math.random()*window.innerWidth, y: Math.random()*window.innerHeight,
+  vx: (Math.random()-.5)*.3, vy: (Math.random()-.5)*.3,
+  r: Math.random()*1.5+.5, a: Math.random()*.4+.1
+});
+(function animCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  pts.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0) p.x = canvas.width;
+    if (p.x > canvas.width) p.x = 0;
+    if (p.y < 0) p.y = canvas.height;
+    if (p.y > canvas.height) p.y = 0;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(123,47,190,${p.a})`;
+    ctx.fill();
+  });
+  ctx.strokeStyle = 'rgba(123,47,190,0.04)';
+  ctx.lineWidth = .5;
+  for (let i = 0; i < pts.length; i++) for (let j = i+1; j < pts.length; j++) {
+    const dx = pts[i].x-pts[j].x, dy = pts[i].y-pts[j].y;
+    const d = Math.sqrt(dx*dx+dy*dy);
+    if (d < 120) {
+      ctx.globalAlpha = (1-d/120)*.15;
+      ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(animCanvas);
+})();
+
+// ════════════════════════════════════════════════════════
+// TELA HELPERS
+// ════════════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+function toast(msg, dur=3000) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'inp-status' + (type ? ' '+type : '');
+}
+
+// ════════════════════════════════════════════════════════
+// ONBOARDING
+// ════════════════════════════════════════════════════════
+function runManifesto() {
+  const lines = document.querySelectorAll('.mline, .mtagline');
+  lines.forEach(l => {
+    const d = parseInt(l.dataset.d || 0);
+    setTimeout(() => {
+      l.style.transition = 'opacity .8s ease, transform .8s ease';
+      l.style.opacity = '1';
+      l.style.transform = 'translateY(0)';
+    }, d);
+  });
+  const totalDelay = Math.max(...[...lines].map(l => parseInt(l.dataset.d||0))) + 1200;
+  setTimeout(() => {
+    if (localStorage.getItem('noxar_intro_seen')) return;
+    // Auto avança após manifesto completo (+ 3s)
+  }, totalDelay + 3000);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const seen = localStorage.getItem('noxar_intro_seen');
+  if (seen) {
+    showScreen('s-login');
+  } else {
+    showScreen('s-onboard');
+    runManifesto();
+  }
+  initAuth();
+  initParticle();
+  initAudio();
+  initFooter();
+});
+
+// ════════════════════════════════════════════════════════
+// AUTH — SUPABASE
+// ════════════════════════════════════════════════════════
+async function initAuth() {
+  const { data: { session } } = await _sb.auth.getSession();
+  if (session) { _session = session; await afterLogin(); }
+  _sb.auth.onAuthStateChange(async (_, session) => {
+    _session = session;
+    if (session) await afterLogin();
+  });
+}
+
+async function afterLogin() {
+  await loadProfile();
+  await loadKeysStatus();
+  localStorage.setItem('noxar_intro_seen', '1');
+  showScreen('s-app');
+  showPage('dashboard');
+}
+
+async function loadProfile() {
+  if (!_session) return;
+  const { data } = await _sb.from('profiles').select('*').eq('id', _session.user.id).single();
+  if (data) {
+    _profile = data;
+    const el = document.getElementById('userEmailDisplay');
+    const av = document.getElementById('userInitial');
+    if (el) el.textContent = data.display_name || _session.user.email;
+    if (av) av.textContent = (data.display_name || _session.user.email || 'A')[0].toUpperCase();
+    const sv = document.getElementById('stat-videos');
+    if (sv) sv.textContent = data.videos_count || 0;
+  }
+}
+
+async function loadKeysStatus() {
+  const data = await api('/api/keys/status');
+  if (data && !data.error) {
+    _keysStatus = data;
+    if (data.tema_dourado) applyGoldTheme();
+  }
+}
+
+function switchTab(tab) {
+  const eBtn = document.getElementById('tab-entrar-btn');
+  const cBtn = document.getElementById('tab-cadastrar-btn');
+  const ePane = document.getElementById('tab-entrar');
+  const cPane = document.getElementById('tab-cadastrar');
+  if (!eBtn || !cBtn || !ePane || !cPane) return;
+  if (tab === 'entrar') {
+    eBtn.classList.add('active'); cBtn.classList.remove('active');
+    ePane.style.display = 'block'; cPane.style.display = 'none';
+  } else {
+    cBtn.classList.add('active'); eBtn.classList.remove('active');
+    cPane.style.display = 'block'; ePane.style.display = 'none';
+  }
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  if (!email || !pass) { setStatus('login-status','⚠ preencha email e senha','err'); return; }
+  const btn = document.getElementById('btn-entrar');
+  if (btn) { btn.innerHTML='<span>Entrando...</span>'; btn.disabled=true; }
+  const t = setTimeout(() => { if(btn){btn.innerHTML='<span>Entrar no Arcana</span>';btn.disabled=false;} }, 10000);
+  const { error } = await _sb.auth.signInWithPassword({ email, password: pass });
+  clearTimeout(t);
+  if (btn) { btn.innerHTML='<span>Entrar no Arcana</span>'; btn.disabled=false; }
+  if (error) {
+    const msgs = { 'Invalid login credentials':'⚠ email ou senha incorretos', 'Email not confirmed':'⚠ confirme seu email' };
+    setStatus('login-status', msgs[error.message] || '⚠ '+error.message, 'err');
+  }
+}
+
+async function doRegister() {
+  const nome  = document.getElementById('reg-nome').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass  = document.getElementById('reg-pass').value;
+  if (!email || pass.length < 6) { setStatus('reg-status','⚠ email válido e senha com 6+ chars','err'); return; }
+  const btn = document.getElementById('btn-reg');
+  if (btn) { btn.innerHTML='<span>Criando...</span>'; btn.disabled=true; }
+  const t = setTimeout(() => { if(btn){btn.innerHTML='<span>Criar conta</span>';btn.disabled=false;} }, 10000);
+  const { data, error } = await _sb.auth.signUp({ email, password: pass, options:{ data:{ display_name: nome } } });
+  clearTimeout(t);
+  if (btn) { btn.innerHTML='<span>Criar conta</span>'; btn.disabled=false; }
+  if (error) { setStatus('reg-status','⚠ '+error.message,'err'); return; }
+  if (data.session) {
+    // auto-login (email confirm off)
+  } else {
+    setStatus('reg-status','✓ conta criada! verifique seu email','ok');
+  }
+}
+
+async function doRecover() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { toast('⚠ digite seu email primeiro'); return; }
+  await _sb.auth.resetPasswordForEmail(email);
+  toast('✓ email de recuperação enviado');
+}
+
+function togglePass(id, btn) {
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '◉' : '○';
+}
+
+async function doLogout() {
+  await _sb.auth.signOut();
+  _session = null; _profile = null; _keysStatus = null;
+  showScreen('s-login');
+  toast('Até logo 𖤍');
+}
+
+// ════════════════════════════════════════════════════════
+// API HELPERS
+// ════════════════════════════════════════════════════════
+async function api(path, opts={}) {
+  if (!_session) return { error: 'não autenticado' };
+  try {
+    const res = await fetch(BACKEND_URL + path, {
+      ...opts,
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+_session.access_token, ...(opts.headers||{}) }
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); return { error: e.error || res.statusText }; }
+    return await res.json();
+  } catch(e) { return { error: e.message }; }
+}
+
+async function apiFetch(path, opts={}) {
+  if (!_session) return null;
+  try {
+    return await fetch(BACKEND_URL + path, {
+      ...opts,
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+_session.access_token }
+    });
+  } catch(e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════
+// NAVEGAÇÃO APP
+// ════════════════════════════════════════════════════════
+const PAGES = ['dashboard','create','history','resultado'];
+function showPage(p) {
+  PAGES.forEach(id => {
+    const el = document.getElementById('page-'+id);
+    if (el) el.style.display = id===p ? 'block' : 'none';
+  });
+  document.querySelectorAll('.nav-item').forEach((el,i) => {
+    el.classList.toggle('active', ['dashboard','create','history'][i] === p);
+  });
+  const titles = { dashboard:'Dashboard', create:'Criar Vídeo', history:'Meus Vídeos', resultado:'Resultado' };
+  const ttl = document.getElementById('topbar-title');
+  if (ttl) ttl.textContent = titles[p] || '';
+  if (p === 'history') loadHistory();
+  if (p === 'dashboard') loadDashRecent();
+}
+
+async function loadDashRecent() {
+  const data = await api('/api/video/historico?limit=6');
+  const el = document.getElementById('dash-videos');
+  if (!el || !data || data.error) return;
+  if (!data.videos || data.videos.length === 0) { el.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--txt3);grid-column:1/-1;padding:24px 0">nenhum vídeo ainda</div>'; return; }
+  el.innerHTML = data.videos.map(v => `
+    <div class="video-card" onclick="toast('${v.title||'Vídeo'}')">
+      <div class="video-thumb"><div class="video-thumb-glyph">𖤍</div><div class="video-thumb-ov"></div>
+        <span class="v-status ${v.status==='done'?'v-done':v.status==='error'?'v-err':'v-proc'}">${v.status}</span>
+      </div>
+      <div class="video-info">
+        <div class="video-title">${v.title||'Sem título'}</div>
+        <div class="video-meta"><span class="v-niche">${v.niche||''}</span><span>${v.duration_target||0}s</span></div>
+      </div>
+    </div>`).join('');
+}
+
+async function loadHistory() {
+  const el = document.getElementById('history-list');
+  if (!el) return;
+  el.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--txt3);padding:24px 0">carregando...</div>';
+  const data = await api('/api/video/historico');
+  if (!data || data.error) { el.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--error);padding:24px 0">erro ao carregar</div>'; return; }
+  if (!data.videos || data.videos.length === 0) { el.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--txt3);padding:24px 0">nenhum vídeo criado ainda</div>'; return; }
+  el.innerHTML = data.videos.map(v => `
+    <div class="h-item">
+      <div class="h-thumb">𖤍</div>
+      <div class="h-info">
+        <div class="h-title">${v.title||'Sem título'}</div>
+        <div class="h-meta"><span style="color:var(--p-vivid)">${v.niche||''}</span><span>${v.duration_target||0}s</span><span>${v.platform||''}</span><span style="color:${v.status==='done'?'var(--success)':v.status==='error'?'var(--error)':'var(--warning)'}">${v.status}</span></div>
+      </div>
+      <div class="h-actions"><button class="btn-icon" onclick="delVideo('${v.id}',this)">✕</button></div>
+    </div>`).join('');
+}
+
+async function delVideo(id, btn) {
+  const data = await api('/api/video/'+id, { method:'DELETE' });
+  if (!data || !data.error) {
+    const item = btn.closest('.h-item');
+    if (item) { item.style.transition='opacity .3s'; item.style.opacity='0'; setTimeout(()=>item.remove(),300); }
+    toast('Vídeo removido');
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// CRIAR VÍDEO — PILLS & PREVIEW
+// ════════════════════════════════════════════════════════
+let _abismoTimer = null, _chave1done = false;
+
+function selPill(el, group) {
+  el.closest('.pills').querySelectorAll('.pill').forEach(p => p.classList.remove('sel'));
+  el.classList.add('sel');
+  updateCfg();
+  // Chave 1 — template Abismo
+  if (group === 'template') {
+    clearTimeout(_abismoTimer);
+    if (el.textContent.includes('Abismo') && !_chave1done) {
+      _abismoTimer = setTimeout(showCoord, 33000);
+    }
+  }
+}
+
+function updDur(v) {
+  document.getElementById('dur-label').textContent = v+'s';
+  document.getElementById('cfg-dur').textContent = v+'s';
+}
+
+function updateCfg() {
+  const g = id => document.querySelector('#pills-'+id+' .pill.sel')?.textContent.trim().replace(/[🟣🔴⚫]\s*/,'') || '';
+  document.getElementById('cfg-nicho').textContent    = g('nicho');
+  document.getElementById('cfg-plat').textContent     = g('plat');
+  document.getElementById('cfg-persona').textContent  = g('persona');
+  document.getElementById('cfg-template').textContent = g('template');
+}
+
+// ════════════════════════════════════════════════════════
+// GERAR VÍDEO — PIPELINE REAL
+// ════════════════════════════════════════════════════════
+let _vBlob = null, _vFilename = 'noxar_video.mp4', _seoData = null;
+
+let _pollingInterval = null;
+let _currentVideoId  = null;
+
+async function startProcessing() {
+  if (!_session) { toast('⚠ faça login primeiro'); return; }
+  const tema = document.getElementById('topicInput')?.value.trim();
+  if (!tema) { toast('⚠ descreva o tema do vídeo'); return; }
+
+  const getPill = id => document.querySelector('#pills-'+id+' .pill.sel')?.textContent.trim() || '';
+  const nichoMap = { 'mistério':'misterio','true crime':'true_crime','terror':'terror','dark history':'dark_history' };
+  const platMap  = { 'tiktok':'tiktok','youtube':'youtube','kwai':'kwai','reels':'reels' };
+  const persMap  = { 'contador':'contador','investigador':'investigador','informante':'informante' };
+  const templMap = { 'névoa':'nevoa','sangue frio':'sangue_frio','abismo':'abismo' };
+
+  const nicho    = nichoMap[getPill('nicho').toLowerCase()]    || 'misterio';
+  const plat     = platMap[getPill('plat').toLowerCase()]      || 'tiktok';
+  const persona  = persMap[getPill('persona').toLowerCase()]   || 'contador';
+  const template = templMap[getPill('template').toLowerCase().replace(/[🟣🔴⚫]\s*/,'')] || 'nevoa';
+  const duracao  = parseInt(document.getElementById('durSlider')?.value) || 60;
+
+  const ov = document.getElementById('proc-overlay');
+  ov.classList.add('show');
+  resetSteps();
+
+  // Anima etapas baseado no tempo estimado
+  const durs = [15000, 40000, 12000, 8000, 20000];
+  let stepCur = 0;
+  function nextStep() {
+    if (stepCur > 0) {
+      document.getElementById('ps'+stepCur)?.classList.remove('active');
+      document.getElementById('ps'+stepCur)?.classList.add('done');
+    }
+    stepCur++;
+    if (stepCur <= 5) {
+      document.getElementById('ps'+stepCur)?.classList.add('active');
+      document.getElementById('procBar').style.width = (stepCur/5*80) + '%';
+    }
+  }
+  nextStep();
+  let acc = 0;
+  const stepTimers = durs.map((d,i) => { acc+=d; return setTimeout(()=>{ if(stepCur<=i+1) nextStep(); }, acc); });
+
+  try {
+    // Inicia geração — recebe video_id imediatamente
+    const res = await api('/api/video/gerar', {
+      method: 'POST',
+      body: JSON.stringify({ tema, nicho, plataforma:plat, duracao, persona, template })
+    });
+
+    stepTimers.forEach(clearTimeout);
+
+    if (!res || res.error) {
+      ov.classList.remove('show');
+      toast('⚠ ' + (res?.error || 'erro ao iniciar geração'));
+      return;
+    }
+
+    _currentVideoId = res.video_id;
+
+    // Polling a cada 5s até status=done ou error
+    _pollingInterval = setInterval(async () => {
+      const poll = await api('/api/video/status/' + _currentVideoId);
+      if (!poll || poll.error) return;
+
+      const video = poll.video;
+      if (!video) return;
+
+      if (video.status === 'done') {
+        clearInterval(_pollingInterval);
+        // Finaliza TODAS as etapas e barra
+        [1,2,3,4,5].forEach(n => {
+          const el = document.getElementById('ps'+n);
+          if (el) { el.classList.remove('active'); el.classList.add('done'); }
+        });
+        const bar = document.getElementById('procBar');
+        if (bar) bar.style.width = '100%';
+
+        // Aguarda 1.5s para o usuário ver tudo verde, depois baixa
+        setTimeout(async () => {
+          ov.classList.remove('show');
+          resetSteps();
+          await downloadAndShow(_currentVideoId, video.video_url || 'noxar_video.mp4');
+        }, 1500);
+
+      } else if (video.status === 'error') {
+        clearInterval(_pollingInterval);
+        ov.classList.remove('show');
+        toast('⚠ erro ao gerar: ' + (video.error_msg || 'tente novamente'));
+      }
+    }, 5000);
+
+  } catch(e) {
+    stepTimers.forEach(clearTimeout);
+    clearInterval(_pollingInterval);
+    ov.classList.remove('show');
+    toast('⚠ erro de conexão');
+  }
+}
+
+async function downloadAndShow(video_id, filename) {
+  try {
+    const res = await apiFetch('/api/video/download/' + video_id);
+    if (!res || !res.ok) { toast('⚠ erro ao baixar vídeo'); return; }
+    _vBlob     = await res.blob();
+    _vFilename = filename;
+    showResult();
+    checkKey2();
+  } catch(e) {
+    toast('⚠ erro ao baixar vídeo');
+  }
+}
+
+function resetSteps() {
+  [1,2,3,4,5].forEach(n => { const el=document.getElementById('ps'+n); if(el){el.classList.remove('active','done');} });
+  document.getElementById('ps1')?.classList.add('active');
+  document.getElementById('procBar').style.width='0%';
+}
+
+function showResult() {
+  if (!_vBlob) return;
+  showPage('resultado');
+  const url = URL.createObjectURL(_vBlob);
+  const src = document.getElementById('vSource');
+  const pl  = document.getElementById('vPlayer');
+  if (src) src.src = url;
+  if (pl)  { pl.load(); pl.addEventListener('ended', showHiddenFrame, { once:true }); }
+  if (_seoData) { document.getElementById('seoBox').style.display='block'; showSeoTab('tiktok', document.querySelector('.seo-tab')); }
+  toast('✓ Vídeo gerado com sucesso');
+}
+
+function downloadVideo() {
+  if (!_vBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(_vBlob);
+  a.download = _vFilename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function showSeoTab(p, tabEl) {
+  if (!_seoData) return;
+  document.querySelectorAll('.seo-tab').forEach(t => t.classList.remove('active'));
+  if (tabEl) tabEl.classList.add('active');
+  const t = (_seoData.titulos||[]).find(x=>x.plataforma===p)?.titulo || '';
+  const h = _seoData.hashtags?.[p] || [];
+  const d = _seoData.descricao || '';
+  const el = document.getElementById('seoContent');
+  if (el) el.innerHTML = `<div class="seo-title">${t}</div><div class="seo-desc">${d}</div><div class="hashtag-list">${h.map(x=>`<span class="hashtag">${x}</span>`).join('')}</div>`;
+}
+
+// ════════════════════════════════════════════════════════
+// TEMA DOURADO
+// ════════════════════════════════════════════════════════
+function applyGoldTheme() {
+  const r = document.documentElement;
+  const g = { '--p-abyss':'#1C1200','--p-deep':'#5C4000','--p-core':'#8B6914','--p-vivid':'#C9A227','--p-glow':'#F0C040','--border':'#3A2E00','--border-active':'#C9A227' };
+  Object.entries(g).forEach(([k,v]) => r.style.setProperty(k,v));
+  localStorage.setItem('noxar_tema','dourado');
+}
+
+// ════════════════════════════════════════════════════════
+// EASTER EGG — PARTÍCULA 𖤍
+// ════════════════════════════════════════════════════════
+let pX = 100, pY = 200, ptX = Math.random()*window.innerWidth, ptY = Math.random()*window.innerHeight;
+let pState = 'dormant', pHoverTimer = null;
+const arcaneP   = document.getElementById('arcaneP');
+const arcaneIns = document.getElementById('arcaneIns');
+
+function initParticle() {
+  (function moveParticle() {
+    const dx = ptX-pX, dy = ptY-pY;
+    pX += dx*.012; pY += dy*.012;
+    if (Math.abs(dx)<5 && Math.abs(dy)<5) {
+      ptX = Math.random()*(window.innerWidth-100)+50;
+      ptY = Math.random()*(window.innerHeight-100)+50;
+    }
+    if (arcaneP) { arcaneP.style.left=pX+'px'; arcaneP.style.top=pY+'px'; }
+    if (arcaneIns) { arcaneIns.style.left=pX+'px'; arcaneIns.style.top=pY+'px'; }
+    requestAnimationFrame(moveParticle);
+  })();
+
+  if (!arcaneP) return;
+
+  arcaneP.addEventListener('mouseenter', () => {
+    if (pState === 'dormant') {
+      pState = 'aware'; arcaneP.className='arcane-p aware';
+      pHoverTimer = setTimeout(() => {
+        pState = 'recognized'; arcaneP.className='arcane-p recognized';
+        if (arcaneIns) arcaneIns.classList.add('vis');
+      }, 2000);
+    }
+  });
+  arcaneP.addEventListener('mouseleave', () => {
+    if (pState === 'aware') {
+      pState = 'dormant'; arcaneP.className='arcane-p';
+      clearTimeout(pHoverTimer);
+    }
+  });
+  arcaneP.addEventListener('click', activatePortal);
+  arcaneP.addEventListener('touchstart', e => { e.preventDefault(); activatePortal(); }, { passive:false });
+}
+
+function activatePortal() {
+  if (arcaneP) arcaneP.style.display = 'none';
+  const glitch = document.getElementById('glitchOv');
+  const portal = document.getElementById('portalOv');
+  if (glitch) { glitch.classList.add('active'); setTimeout(() => glitch.classList.remove('active'), 300); }
+  if (portal) {
+    portal.classList.add('active');
+    setTimeout(() => { portal.classList.remove('active'); openTerminal(); }, 2500);
+  } else {
+    openTerminal();
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// TERMINAL
+// ════════════════════════════════════════════════════════
+const LORE = [
+  { t:'dim',  txt:'> inicializando acesso...' },
+  { t:'dim',  txt:'> verificando credenciais...' },
+  { t:'ok',   txt:'> ACESSO CONCEDIDO — arquivo A.R. carregado' },
+  { t:'sp',   txt:'' },
+  { t:'kh',   txt:'A.R. — PROJETO ARQUIVO OCULTO' },
+  { t:'kh',   txt:'════════════════════════════════' },
+  { t:'sp',   txt:'' },
+  { t:'lore', txt:'Em 2019, um pesquisador catalogou 2.847 casos removidos da internet.' },
+  { t:'lore', txt:'Não eram rumores. Eram fatos. Com datas, nomes, coordenadas.' },
+  { t:'lore', txt:'Casos que desapareceram de servidores, arquivos, memórias.' },
+  { t:'sp',   txt:'' },
+  { t:'lore-a', txt:'Em março de 2021, o projeto foi removido.' },
+  { t:'lore-a', txt:'O pesquisador, identificado apenas como A.R., parou de responder.' },
+  { t:'sp',   txt:'' },
+  { t:'lore', txt:'O que sobrou foi o código.' },
+  { t:'lore', txt:'Uma estrutura construída para que as histórias continuassem.' },
+  { t:'lore', txt:'Mesmo que ele parasse.' },
+  { t:'sp',   txt:'' },
+  { t:'bright', txt:'Você está usando esse código agora.' },
+  { t:'sp',   txt:'' },
+  { t:'dim',  txt:'> total de casos catalogados: 2.847' },
+  { t:'dim',  txt:'> status do pesquisador: desconhecido' },
+  { t:'dim',  txt:'> última atualização: 14/03/2021 03:47' },
+  { t:'sp',   txt:'' },
+  { t:'kh',   txt:'CHAVES DO ARQUIVO' },
+  { t:'kh',   txt:'────────────────' },
+  { t:'dim',  txt:'> CHAVE_1: onde a escuridão começa — template Abismo, 33s' },
+  { t:'dim',  txt:'> CHAVE_2: onde a verdade termina — frame oculto no vídeo' },
+  { t:'dim',  txt:'> CHAVE_3: onde ninguém pensa em olhar — rodapé, 7 cliques' },
+  { t:'dim',  txt:'> CHAVE_4: o que não deveria ser ouvido — ouça com atenção' },
+  { t:'sp',   txt:'' },
+  { t:'lore-a', txt:'Algumas histórias não querem ser contadas.' },
+  { t:'lore-a', txt:'Exatamente por isso precisam ser.' },
+  { t:'sp',   txt:'' },
+  { t:'dim',  txt:'> fim do arquivo —' },
+];
+
+let termOpen = false, termAnimFrame = null;
+
+function openTerminal() {
+  const term = document.getElementById('terminal');
+  if (!term) return;
+  termOpen = true;
+  term.classList.add('open');
+  const body = document.getElementById('termBody');
+  if (!body) return;
+  body.innerHTML = '';
+  LORE.forEach((l,i) => {
+    const span = document.createElement('span');
+    span.className = 'tl ' + l.t;
+    span.textContent = l.txt;
+    body.appendChild(span);
+    setTimeout(() => span.classList.add('vis'), i * 200);
+  });
+  // Progresso
+  const prog = document.getElementById('termProg');
+  let p = 0;
+  const progInt = setInterval(() => {
+    p += .3; if (p > 100) { clearInterval(progInt); return; }
+    if (prog) prog.style.width = p + '%';
+  }, LORE.length * 200 / 100);
+  // Chave 4 input (se disponível)
+  if (_keysStatus?.chave4_disponivel) {
+    setTimeout(() => {
+      const wrap = document.getElementById('termInputWrap');
+      if (wrap) wrap.classList.add('show');
+    }, LORE.length * 200 + 1000);
+  }
+}
+
+function closeTerminal() {
+  termOpen = false;
+  const term = document.getElementById('terminal');
+  if (term) term.classList.remove('open');
+  if (arcaneP) { arcaneP.style.display='block'; arcaneP.className='arcane-p'; pState='dormant'; }
+  if (arcaneIns) arcaneIns.classList.remove('vis');
+  const wrap = document.getElementById('termInputWrap');
+  if (wrap) wrap.classList.remove('show');
+}
+
+// ════════════════════════════════════════════════════════
+// SISTEMA DE CHAVES
+// ════════════════════════════════════════════════════════
+async function registerKey(chave, prova) {
+  const data = await api('/api/keys/encontrar', { method:'POST', body: JSON.stringify({ chave, prova }) });
+  if (!data || data.error) return;
+  if (data.nova) {
+    showKeyNotif(chave, data.mensagem, data.total_encontradas);
+    if (data.tema_dourado_ativado) setTimeout(applyGoldTheme, 1500);
+    if (data.arquivo_liberado) setTimeout(openArquivoAR, 2000);
+    await loadKeysStatus();
+  }
+}
+
+function showKeyNotif(chave, msg, total) {
+  document.getElementById('knTitle').textContent = '𖤍 '+chave.toUpperCase()+' ENCONTRADA';
+  document.getElementById('knMsg').textContent   = msg;
+  document.getElementById('knCount').textContent = 'CHAVES: '+total+'/3'+(total>=3?' — ARQUIVO DESBLOQUEADO':'');
+  const n = document.getElementById('keyNotif');
+  n.classList.add('show');
+  setTimeout(() => n.classList.remove('show'), 5000);
+}
+
+// CHAVE 1 — Abismo 33s
+function showCoord() {
+  _chave1done = true;
+  clearTimeout(_abismoTimer);
+  const el = document.getElementById('coord-flash');
+  if (el) el.classList.add('show');
+  setTimeout(() => {
+    if (el) { el.style.transition='opacity .5s'; el.style.opacity='0'; }
+    setTimeout(() => { if(el){el.classList.remove('show');el.style.opacity='';el.style.transition='';} }, 500);
+    registerKey('chave1','40.7128');
+  }, 5000);
+}
+
+// CHAVE 2 — Frame oculto fim do vídeo
+function checkKey2() {
+  if (localStorage.getItem('noxar_k2')) return;
+}
+function showHiddenFrame() {
+  if (localStorage.getItem('noxar_k2')) return;
+  localStorage.setItem('noxar_k2','1');
+  const fr = document.getElementById('frame-oculto');
+  if (fr) fr.classList.add('show');
+  setTimeout(() => { if(fr) fr.classList.remove('show'); registerKey('chave2','AR-2847-FINAL'); }, 500);
+}
+
+// CHAVE 3 — Footer 7 cliques
+function confirmarChave3() {
+  const val = document.getElementById('chave3Input')?.value.toLowerCase().trim();
+  if (val === 'ainda respira') {
+    document.getElementById('chave3-ov').classList.remove('show');
+    registerKey('chave3','ainda respira');
+  } else {
+    const inp = document.getElementById('chave3Input');
+    if (inp) { inp.style.borderColor='var(--error)'; setTimeout(()=>{inp.style.borderColor='';},1000); }
+  }
+}
+
+// CHAVE 4 — Input no terminal
+function checkKey4(val) {
+  if (val.trim() === '2847') {
+    registerKey('chave4','2847');
+    const wrap = document.getElementById('termInputWrap');
+    if (wrap) wrap.classList.remove('show');
+  }
+}
+
+// Arquivo A.R.
+async function openArquivoAR() {
+  const ov = document.getElementById('ar-ov');
+  const msg = document.getElementById('arMsg');
+  if (ov) ov.classList.add('show');
+  if (msg) msg.textContent = 'A.R. está escrevendo...';
+  const data = await api('/api/keys/mensagem-ar');
+  if (data && data.mensagem && msg) {
+    msg.style.opacity='0'; msg.style.transition='opacity 1.5s';
+    msg.innerHTML = data.mensagem.replace(/\n/g,'<br>').replace(/— A\.R\./,'<span class="ar-sign">— A.R.</span>');
+    setTimeout(() => msg.style.opacity='1', 100);
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// FOOTER — CHAVE 3
+// ════════════════════════════════════════════════════════
+function initFooter() {
+  let clicks = 0, timer;
+  const fc = document.getElementById('footerCopy');
+  if (!fc) return;
+  fc.addEventListener('click', () => {
+    clicks++;
+    clearTimeout(timer);
+    timer = setTimeout(() => { clicks=0; fc.style.color=''; fc.style.textShadow=''; }, 3000);
+    const prog = Math.min(clicks/7, 1);
+    const r = Math.round(74 + (157-74)*prog);
+    const g = Math.round(14 + (78-14)*prog);
+    const b = Math.round(143 + (221-143)*prog);
+    fc.style.color = `rgb(${r},${g},${b})`;
+    fc.style.textShadow = clicks>=4 ? `0 0 ${clicks*3}px rgba(123,47,190,0.6)` : '';
+    if (clicks >= 7) {
+      clicks=0; clearTimeout(timer);
+      fc.style.color=''; fc.style.textShadow='';
+      setTimeout(() => document.getElementById('chave3-ov').classList.add('show'), 300);
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// ÁUDIO GENERATIVO
+// ════════════════════════════════════════════════════════
+let audioCtx = null, audioMuted = false;
+function initAudio() {
+  const btn = document.getElementById('mute-btn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      audioMuted = !audioMuted;
+      btn.textContent = audioMuted ? '✕' : '♪';
+      btn.style.opacity = audioMuted ? '0.3' : '1';
+      if (audioCtx) audioCtx.suspend && (audioMuted ? audioCtx.suspend() : audioCtx.resume());
+    });
+  }
+  // Inicia no primeiro toque
+  const startAudio = () => {
+    if (audioCtx) return;
+    document.removeEventListener('click', startAudio);
+    document.removeEventListener('touchstart', startAudio);
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      buildAmbience();
+    } catch(e) {}
+  };
+  document.addEventListener('click', startAudio);
+  document.addEventListener('touchstart', startAudio);
+}
+
+function buildAmbience() {
+  if (!audioCtx) return;
+  // Pulso base 40hz
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.value = 40;
+  osc.type = 'sine';
+  gain.gain.value = 0.04;
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start();
+  // Drone 174hz
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.frequency.value = 174;
+  osc2.type = 'sine';
+  gain2.gain.value = 0.02;
+  osc2.connect(gain2); gain2.connect(audioCtx.destination);
+  osc2.start();
+  // Morse 2847 em 528hz (camada 4 — chave oculta)
+  function playMorse() {
+    if (!audioCtx || audioMuted) return;
+    const morse = {'2':'..---','8':'---..','4':'....-','7':'--...'};
+    const code = '2847'.split('').map(d=>morse[d]).join(' ');
+    let t = audioCtx.currentTime + 2;
+    const dot=0.12, dash=0.36, gap=0.1, charGap=0.4, wordGap=0.8;
+    for (const ch of code) {
+      if (ch === '.') {
+        const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+        o.frequency.value=528; o.type='sine';
+        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.01);
+        g.gain.linearRampToValueAtTime(0,t+dot-0.01);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t); o.stop(t+dot); t+=dot+gap;
+      } else if (ch === '-') {
+        const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+        o.frequency.value=528; o.type='sine';
+        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.01);
+        g.gain.linearRampToValueAtTime(0,t+dash-0.01);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t); o.stop(t+dash); t+=dash+gap;
+      } else if (ch === ' ') { t+=charGap; }
+    }
+    // Repete entre 60-120s
+    setTimeout(playMorse, (60+Math.random()*60)*1000);
+  }
+  setTimeout(playMorse, 30000);
+}
+
+// ════════════════════════════════════════════════════════
+// EXPÕE TUDO NO WINDOW
+// ════════════════════════════════════════════════════════
+Object.assign(window, {
+  showScreen, showPage, toast,
+  switchTab, doLogin, doRegister, doRecover, doLogout, togglePass,
+  selPill, updDur, startProcessing, downloadVideo, showSeoTab,
+  delVideo, loadHistory,
+  closeTerminal, checkKey4, confirmarChave3,
+  openArquivoAR,
+  applyGoldTheme,
+});
+</script>
+
+</body>
+</html> status.textContent = ''; return; }
+    if (!email.includes('@')) { status.textContent = '⚠ email inválido'; status.className = 'input-status invalid'; return; }
+    if (pass.length > 0 && pass.length < 6) { status.textContent = '⚠ senha muito curta'; status.className = 'input-status invalid'; return; }
+    if (email.includes('@') && pass.length >= 6) { status.textContent = '✓ pronto para entrar'; status.className = 'input-status valid'; }
+    else { status.textContent = ''; status.className = 'input-status'; }
+  }
+  if (e.target.id === 'regEmail' || e.target.id === 'regPass' || e.target.id === 'regName') {
+    const name  = document.getElementById('regName')?.value.trim() || '';
+    const email = document.getElementById('regEmail')?.value.trim() || '';
+    const pass  = document.getElementById('regPass')?.value.trim() || '';
+    const status = document.getElementById('inputStatus2');
+    if (!status) return;
+    if (!email.includes('@') && email.length > 0) { status.textContent = '⚠ email inválido'; status.className = 'input-status invalid'; return; }
+    if (pass.length > 0 && pass.length < 8) { status.textContent = '⚠ mínimo 8 caracteres'; status.className = 'input-status invalid'; return; }
+    if (name.length > 0 && email.includes('@') && pass.length >= 8) { status.textContent = '✓ pronto para criar conta'; status.className = 'input-status valid'; }
+    else { status.textContent = ''; status.className = 'input-status'; }
+  }
+});
+
+function handleEnter(e) {
+  const btn = document.getElementById('enterBtn');
+  const rect = btn.getBoundingClientRect();
+  const ripple = document.createElement('div');
+  ripple.className = 'ripple';
+  ripple.style.left = (e.clientX - rect.left) + 'px';
+  ripple.style.top  = (e.clientY - rect.top)  + 'px';
+  ripple.style.width = ripple.style.height = '10px';
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
+
+  const isRegister = document.getElementById('tab-register').style.display !== 'none';
+  const emailEl = isRegister ? document.getElementById('regEmail') : document.getElementById('loginEmail');
+  const passEl  = isRegister ? document.getElementById('regPass')  : document.getElementById('loginPass');
+  const statusEl = document.getElementById(isRegister ? 'inputStatus2' : 'inputStatus');
+  const email = emailEl?.value.trim() || '';
+  const pass  = passEl?.value.trim() || '';
+  if (!email.includes('@') || pass.length < 6) {
+    statusEl.textContent = '⚠ preencha email e senha válidos';
+    statusEl.className = 'input-status invalid';
+    const card = document.querySelector('.login-card');
+    card.style.transition = 'transform 0.1s';
+    let s = 0;
+    const shake = setInterval(() => {
+      card.style.transform = s % 2 === 0 ? 'translateX(6px)' : 'translateX(-6px)';
+      s++;
+      if (s > 5) { clearInterval(shake); card.style.transform = ''; }
+    }, 60);
+    return;
+  }
+
+  btn.innerHTML = '<span>Entrando...</span>';
+  btn.style.opacity = '0.7';
+  setTimeout(() => { enterApp(); }, 1000);
+}
+
+// =====================
+// FOOTER EASTER EGG — CHAVE 3 (7 cliques)
+// =====================
+let footerClicks = 0;
+let footerTimer;
+document.getElementById('footerCopy')?.addEventListener('click', () => {
+  footerClicks++;
+  clearTimeout(footerTimer);
+  footerTimer = setTimeout(() => { footerClicks = 0; }, 3000);
+
+  if (footerClicks >= 7) {
+    footerClicks = 0;
+    const footer = document.getElementById('footerCopy');
+    footer.style.color = 'var(--purple-vivid)';
+    footer.style.textShadow = '0 0 10px var(--purple-core)';
+    setTimeout(() => {
+      footer.style.color = '';
+      footer.style.textShadow = '';
+      const secret = prompt('𖤍');
+      if (secret && secret.toLowerCase().trim() === 'ainda respira') {
+        const isNew = foundKey('chave3');
+        if (isNew) {
+          showKeyFoundNotification('CHAVE_3 ENCONTRADA', 'O símbolo era a resposta.');
+        } else {
+          showKeyFoundNotification('CHAVE_3', 'Já catalogada no arquivo.');
+        }
+      }
+    }, 500);
+  }
+});
+
+// CHAVE 1 — Template Abismo, 33s sem interagir (simulado via variável global)
+let abismoTimer = null;
+window.startAbismoWatch = function() {
+  clearTimeout(abismoTimer);
+  abismoTimer = setTimeout(() => {
+    const isNew = foundKey('chave1');
+    showKeyFoundNotification('CHAVE_1 ENCONTRADA', '40.7128° N, 74.0060° W — 1987');
+  }, 33000);
+};
+window.resetAbismoWatch = function() {
+  clearTimeout(abismoTimer);
+};
+
+// CHAVE 2 — Primeiro frame oculto após exportar vídeo
+window.triggerKey2 = function() {
+  const isNew = foundKey('chave2');
+  if (isNew) showKeyFoundNotification('CHAVE_2 ENCONTRADA', 'AR-2847-FINAL');
+};
+
+// Notificação de chave encontrada
+function showKeyFoundNotification(title, subtitle) {
+  const notif = document.createElement('div');
+  notif.style.cssText = `
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+    background: rgba(18,18,26,0.95); border: 1px solid var(--purple-core);
+    border-radius: 2px; padding: 16px 28px; z-index: 500;
+    font-family: 'JetBrains Mono', monospace; text-align: center;
+    box-shadow: 0 0 30px rgba(123,47,190,0.4);
+    animation: notifIn 0.4s ease forwards;
+  `;
+  notif.innerHTML = `
+    <div style="font-size:10px;letter-spacing:0.3em;color:var(--purple-glow);margin-bottom:6px">𖤍 ${title}</div>
+    <div style="font-size:12px;color:var(--text-secondary);letter-spacing:0.1em">${subtitle}</div>
+    <div style="font-size:10px;color:var(--text-ghost);margin-top:8px;letter-spacing:0.15em">
+      CHAVES: ${countFoundKeys()}/3 ${allKeysFound() ? '— ARQUIVO DESBLOQUEADO' : ''}
+    </div>
+  `;
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes notifIn { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(notif);
+  setTimeout(() => {
+    notif.style.transition = 'opacity 0.5s ease';
+    notif.style.opacity = '0';
+    setTimeout(() => notif.remove(), 500);
+  }, 4000);
+}
+
+// Keyboard ESC closes terminal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeTerminal();
+});
+
+// =====================
+// GENERATIVE AUDIO ENGINE — NOXAR ARCANA
+// =====================
+// Estrutura de 6 camadas sonoras com significado oculto
+// A quarta chave ESTÁ no áudio — morse de "2847"
+
+let audioCtx = null;
+let audioStarted = false;
+let audioNodes = {};
+
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // MASTER GAIN
+  const master = audioCtx.createGain();
+  master.gain.setValueAtTime(0, audioCtx.currentTime);
+  master.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 4);
+  master.connect(audioCtx.destination);
+  audioNodes.master = master;
+
+  startLayer1_Pulse(master);      // O PULSO — batida cardíaca de A.R.
+  startLayer2_Memory(master);     // A MEMÓRIA — pad atmosférico
+  startLayer3_Archive(master);    // O ARQUIVO — ruído do sistema corrompido
+  startLayer4_Morse(master);      // O CÓDIGO — morse de 2847 (a quarta chave)
+  startLayer5_Tension(master);    // O PERIGO — drone crescente imperceptível
+}
+
+// ─── CAMADA 1: O PULSO ───────────────────────────────
+// 72 BPM — frequência cardíaca humana em repouso
+// Infrassônico: 40hz — sente-se mais que se ouve
+// Significado: A.R. ainda está vivo em algum lugar
+function startLayer1_Pulse(master) {
+  const bpm = 72;
+  const interval = 60 / bpm; // 0.833s
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.06, audioCtx.currentTime);
+  gainNode.connect(master);
+
+  function beat(time) {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(40, time);
+    env.gain.setValueAtTime(0, time);
+    env.gain.linearRampToValueAtTime(1, time + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.001, time + interval * 0.8);
+    osc.connect(env);
+    env.connect(gainNode);
+    osc.start(time);
+    osc.stop(time + interval * 0.8);
+  }
+
+  let nextBeat = audioCtx.currentTime + 2;
+  function schedule() {
+    while (nextBeat < audioCtx.currentTime + 0.3) {
+      beat(nextBeat);
+      nextBeat += interval;
+    }
+    setTimeout(schedule, 100);
+  }
+  schedule();
+}
+
+// ─── CAMADA 2: A MEMÓRIA ──────────────────────────────
+// Acorde menor em Ré — Luto e busca
+// 174hz base (Solfeggio — alívio da dor)
+// Notas longas que se dissolvem: a história que não quer ser esquecida
+function startLayer2_Memory(master) {
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.04, audioCtx.currentTime);
+
+  // Reverb simulado com convolver
+  const convolver = audioCtx.createConvolver();
+  const reverbGain = audioCtx.createGain();
+  reverbGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+
+  // Gerar impulso de reverb longo
+  const reverbLen = audioCtx.sampleRate * 6;
+  const impulse = audioCtx.createBuffer(2, reverbLen, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = impulse.getChannelData(c);
+    for (let i = 0; i < reverbLen; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLen, 2.5);
+    }
+  }
+  convolver.buffer = impulse;
+
+  gainNode.connect(convolver);
+  convolver.connect(reverbGain);
+  reverbGain.connect(master);
+  gainNode.connect(master);
+
+  // Acorde Ré menor: D(146.8) F(174.6) A(220)
+  const chordFreqs = [146.8, 174.6, 220, 293.6];
+  const noteDuration = 12; // segundos por nota longa
+  const fadeTime = 3;
+
+  function playChord(startTime) {
+    chordFreqs.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      // Ligeira variação de timbre por nota
+      osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime);
+      // Micro-detuning para batimento natural
+      osc.detune.setValueAtTime((Math.random() - 0.5) * 8, startTime);
+      env.gain.setValueAtTime(0, startTime);
+      env.gain.linearRampToValueAtTime(0.8, startTime + fadeTime);
+      env.gain.setValueAtTime(0.8, startTime + noteDuration - fadeTime);
+      env.gain.linearRampToValueAtTime(0, startTime + noteDuration);
+      osc.connect(env);
+      env.connect(gainNode);
+      osc.start(startTime);
+      osc.stop(startTime + noteDuration + 0.1);
+    });
+  }
+
+  let t = audioCtx.currentTime + 1;
+  playChord(t);
+  function scheduleChords() {
+    t += noteDuration - fadeTime; // overlap suave
+    playChord(t);
+    const delay = (noteDuration - fadeTime) * 1000;
+    setTimeout(scheduleChords, delay);
+  }
+  setTimeout(scheduleChords, (noteDuration - fadeTime) * 1000);
+}
+
+// ─── CAMADA 3: O ARQUIVO ────────────────────────────────
+// White noise filtrado — o sistema corrompido tentando se reconstituir
+// Filtro passa-baixa que "respira" entre 200-800hz
+// Significado: 2.401 arquivos corrompidos que ainda existem em fragmentos
+function startLayer3_Archive(master) {
+  const bufferSize = audioCtx.sampleRate * 4;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = noiseBuffer;
+  source.loop = true;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(200, audioCtx.currentTime);
+  filter.Q.setValueAtTime(2, audioCtx.currentTime);
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.025, audioCtx.currentTime);
+
+  // Tremolo — o arquivo pulsa como respiração irregular
+  const tremolo = audioCtx.createOscillator();
+  const tremoloGain = audioCtx.createGain();
+  tremolo.frequency.setValueAtTime(0.08, audioCtx.currentTime); // 0.08hz = muito lento
+  tremolo.type = 'sine';
+  tremoloGain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+  tremolo.connect(tremoloGain);
+  tremoloGain.connect(gainNode.gain);
+  tremolo.start();
+
+  // Filtro sobe e desce como respiração (LFO no cutoff)
+  const filterLFO = audioCtx.createOscillator();
+  const filterLFOGain = audioCtx.createGain();
+  filterLFO.frequency.setValueAtTime(0.05, audioCtx.currentTime);
+  filterLFO.type = 'sine';
+  filterLFOGain.gain.setValueAtTime(300, audioCtx.currentTime);
+  filterLFO.connect(filterLFOGain);
+  filterLFOGain.connect(filter.frequency);
+  filterLFO.start();
+
+  source.connect(filter);
+  filter.connect(gainNode);
+  gainNode.connect(master);
+  source.start();
+}
+
+// ─── CAMADA 4: O CÓDIGO (A QUARTA CHAVE) ────────────────
+// Morse code de "2847" em 528hz (Solfeggio — transformação)
+// Esta É a quarta chave escondida no áudio
+// Quem conhece morse vai ouvir: ..--- ---.. ....- --...
+// Aparece aleatoriamente, como um sinal sendo transmitido
+function startLayer4_Morse(master) {
+  const freq   = 528;
+  const dot    = 0.12;  // duração do ponto
+  const dash   = dot * 3;
+  const gap    = dot;   // gap entre elementos
+  const charGap = dot * 3; // gap entre caracteres
+
+  // Morse: 2=..--- 8=---.. 4=....- 7=--...
+  const morseCode = [
+    [dot, dot, dash, dash, dash],     // 2
+    [dash, dash, dash, dot, dot],     // 8
+    [dot, dot, dot, dot, dash],       // 4
+    [dash, dash, dot, dot, dot],      // 7
+  ];
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.035, audioCtx.currentTime);
+
+  // Filtro passa-banda para dar timbre de rádio
+  const bandpass = audioCtx.createBiquadFilter();
+  bandpass.type = 'bandpass';
+  bandpass.frequency.setValueAtTime(528, audioCtx.currentTime);
+  bandpass.Q.setValueAtTime(8, audioCtx.currentTime);
+
+  gainNode.connect(bandpass);
+  bandpass.connect(master);
+
+  function playMorse() {
+    let t = audioCtx.currentTime;
+
+    // Fade in do sinal
+    gainNode.gain.setValueAtTime(0, t);
+    gainNode.gain.linearRampToValueAtTime(0.035, t + 0.5);
+
+    morseCode.forEach((char, ci) => {
+      char.forEach((dur, ei) => {
+        const osc = audioCtx.createOscillator();
+        const env = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        env.gain.setValueAtTime(0, t);
+        env.gain.linearRampToValueAtTime(1, t + 0.01);
+        env.gain.setValueAtTime(1, t + dur - 0.01);
+        env.gain.linearRampToValueAtTime(0, t + dur);
+        osc.connect(env);
+        env.connect(gainNode);
+        osc.start(t);
+        osc.stop(t + dur + 0.01);
+        t += dur + gap;
+      });
+      t += charGap;
+    });
+
+    // Fade out do sinal
+    gainNode.gain.setValueAtTime(0.035, t);
+    gainNode.gain.linearRampToValueAtTime(0, t + 1);
+
+    // Próxima transmissão: intervalo aleatório 40-90 segundos
+    const nextIn = (40 + Math.random() * 50) * 1000;
+    setTimeout(playMorse, nextIn);
+  }
+
+  // Primeira transmissão após 15s (tempo de carregar e o usuário se ambientar)
+  setTimeout(playMorse, 15000);
+}
+
+// ─── CAMADA 5: O PERIGO ──────────────────────────────────
+// Drone de cordas sintéticas subindo micro-tonalmente
+// Sobe 1 semitom a cada 90 segundos — imperceptível conscientemente
+// Significado: a sensação de estar sendo observado aumenta com o tempo
+function startLayer5_Tension(master) {
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.02, audioCtx.currentTime);
+  gainNode.connect(master);
+
+  // Frequência inicial: Mi2 (82.4hz) — grave e ameaçador
+  let baseFreq = 82.4;
+  const semitoneRatio = Math.pow(2, 1/12); // ~1.0595
+
+  function createDroneLayer(freq, detune = 0) {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    osc.detune.setValueAtTime(detune, audioCtx.currentTime);
+    env.gain.setValueAtTime(0, audioCtx.currentTime);
+    env.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 6);
+    osc.connect(env);
+    env.connect(gainNode);
+    osc.start();
+    return { osc, env };
+  }
+
+  // 3 layers com micro-detuning para beating natural
+  let layers = [
+    createDroneLayer(baseFreq, 0),
+    createDroneLayer(baseFreq, +7),
+    createDroneLayer(baseFreq, -7),
+  ];
+
+  // A cada 90s sobe um semitom imperceptivelmente
+  function riseTension() {
+    baseFreq *= semitoneRatio;
+    const t = audioCtx.currentTime;
+    const rampTime = 8; // sobe suavemente em 8 segundos
+    layers.forEach((layer, i) => {
+      const detune = [0, +7, -7][i];
+      layer.osc.frequency.linearRampToValueAtTime(baseFreq, t + rampTime);
+      layer.osc.detune.setValueAtTime(detune, t);
+    });
+    setTimeout(riseTension, 90000);
+  }
+  setTimeout(riseTension, 90000);
+}
+
+// ─── TRIGGER DE ÁUDIO ────────────────────────────────────
+// Robusto: inicia E resume no primeiro clique em qualquer elemento
+let audioMuted = false;
+
+async function ensureAudio() {
+  if (!audioStarted) {
+    initAudio();
+  }
+  // Browser pode suspender o contexto — sempre resume
+  if (audioCtx && audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+}
+
+// Captura qualquer interação — incluindo o clique na partícula
+document.addEventListener('click',   () => ensureAudio(), { once: false, capture: true });
+document.addEventListener('keydown', () => ensureAudio(), { once: false, capture: true });
+document.addEventListener('touchstart', () => ensureAudio(), { once: false, capture: true });
+
+// Botão mute no canto superior esquerdo
+const muteBtn = document.createElement('button');
+muteBtn.id = 'muteBtn';
+muteBtn.innerHTML = '♪';
+muteBtn.style.cssText = `
+  position: fixed; top: 24px; left: 24px; z-index: 200;
+  background: none; border: 1px solid rgba(123,47,190,0.3);
+  color: rgba(123,47,190,0.5); font-size: 12px;
+  width: 28px; height: 28px; border-radius: 2px;
+  cursor: none; transition: all 0.3s; padding: 0;
+  font-family: monospace; letter-spacing: 0;
+`;
+muteBtn.addEventListener('mouseenter', () => {
+  muteBtn.style.color = 'var(--purple-vivid)';
+  muteBtn.style.borderColor = 'var(--purple-core)';
+  muteBtn.style.boxShadow = '0 0 10px rgba(123,47,190,0.3)';
+});
+muteBtn.addEventListener('mouseleave', () => {
+  muteBtn.style.color = audioMuted ? 'rgba(255,51,102,0.5)' : 'rgba(123,47,190,0.5)';
+  muteBtn.style.borderColor = audioMuted ? 'rgba(255,51,102,0.3)' : 'rgba(123,47,190,0.3)';
+  muteBtn.style.boxShadow = 'none';
+});
+muteBtn.addEventListener('click', () => {
+  audioMuted = !audioMuted;
+  if (audioCtx && audioNodes.master) {
+    audioNodes.master.gain.linearRampToValueAtTime(
+      audioMuted ? 0 : 0.7,
+      audioCtx.currentTime + 0.5
+    );
+  }
+  muteBtn.innerHTML = audioMuted ? '✕' : '♪';
+  muteBtn.style.color = audioMuted ? 'rgba(255,51,102,0.5)' : 'rgba(123,47,190,0.5)';
+  muteBtn.style.borderColor = audioMuted ? 'rgba(255,51,102,0.3)' : 'rgba(123,47,190,0.3)';
+});
+document.body.appendChild(muteBtn);
+
+// Quando terminal abre: Layer 6 — A REVELAÇÃO
+// 639hz (Solfeggio — conexão) + reverb longo
+// Significado: A.R. te encontrou
+async function playRevealSound() {
+  await ensureAudio();
+  if (!audioCtx) return;
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+  gainNode.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 1.5);
+  gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime + 4);
+  gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 8);
+
+  // Reverb longo
+  const convolver = audioCtx.createConvolver();
+  const reverbLen = audioCtx.sampleRate * 8;
+  const impulse = audioCtx.createBuffer(2, reverbLen, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = impulse.getChannelData(c);
+    for (let i = 0; i < reverbLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLen, 1.8);
+  }
+  convolver.buffer = impulse;
+
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(639, audioCtx.currentTime);
+  osc.connect(gainNode);
+  gainNode.connect(convolver);
+  convolver.connect(audioCtx.destination);
+  gainNode.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 8);
+}
+
+</script>
+
+<!-- ======================== -->
+<!-- APP SHELL                -->
+<!-- ======================== -->
+<div class="screen" id="screen-app" style="display:none">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-noxar" style="font-size:19px;letter-spacing:0.18em">
+        <span style="display:inline-block">N</span><span style="display:inline-block">O</span><span class="x-letter" style="display:inline-block">X</span><span style="display:inline-block">A</span><span style="display:inline-block">R</span>
+      </div>
+      <span class="logo-arcana" style="opacity:1;animation:none">Arcana</span>
+      <div class="logo-separator" style="opacity:1;animation:none"></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Menu</div>
+      <div class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon">◈</span><span>Dashboard</span></div>
+      <div class="nav-item" onclick="showPage('create')"><span class="nav-icon">✦</span><span>Criar Vídeo</span></div>
+      <div class="nav-item" onclick="showPage('history')"><span class="nav-icon">▦</span><span>Meus Vídeos</span></div>
+      <div class="nav-section-label">Sistema</div>
+      <div class="nav-item" onclick="appToast('Configurações em breve')"><span class="nav-icon">⚙</span><span>Config</span></div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="userInitial">A</div>
+        <div>
+          <div class="user-email" id="userEmailDisplay">usuario@email.com</div>
+          <div class="user-plan">FREE</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="main-area">
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn-sm ghost" onclick="doLogout()">Sair</button>
+        <button class="btn-sm primary" onclick="showPage('create')">+ Novo Vídeo</button>
+      </div>
+    </div>
+    <div class="page-content">
+      <!-- DASHBOARD -->
+      <div id="page-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Vídeos criados</div><div class="stat-value">0</div><div class="stat-sub">nenhum ainda</div></div>
+          <div class="stat-card"><div class="stat-label">Tempo gerado</div><div class="stat-value">0s</div><div class="stat-sub">total</div></div>
+          <div class="stat-card"><div class="stat-label">Plano</div><div class="stat-value" style="font-size:17px;color:var(--purple-vivid)">FREE</div><div class="stat-sub">ilimitado</div></div>
+        </div>
+        <div class="cta-card" onclick="showPage('create')">
+          <div class="cta-text"><h2>Criar primeiro vídeo</h2><p>Roteiro → Imagens → Narração → Vídeo pronto</p></div>
+          <div class="cta-glyph">𖤍</div>
+        </div>
+        <div class="section-title">Vídeos Recentes</div>
+        <div class="videos-grid">
+          <div class="video-card">
+            <div class="video-thumb"><div class="video-thumb-glyph">𖤍</div><div class="video-thumb-overlay"></div><div class="video-status status-done">Pronto</div></div>
+            <div class="video-info"><div class="video-title">O Caso das 7 Desaparições</div><div class="video-meta"><span class="video-niche">True Crime</span><span>60s</span><span>TikTok</span></div></div>
+          </div>
+          <div class="video-card">
+            <div class="video-thumb" style="background:linear-gradient(135deg,#0a0a2e,#050508)"><div class="video-thumb-glyph">◈</div><div class="video-thumb-overlay"></div><div class="video-status status-proc">Gerando</div></div>
+            <div class="video-info"><div class="video-title">A Conspiração do Silêncio</div><div class="video-meta"><span class="video-niche">Mistério</span><span>90s</span><span>YouTube</span></div></div>
+          </div>
+          <div class="video-card" style="border-style:dashed;display:flex;align-items:center;justify-content:center;min-height:160px" onclick="showPage('create')">
+            <div style="text-align:center"><div style="font-size:20px;opacity:0.15;margin-bottom:5px">+</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.2em;color:var(--text-ghost)">NOVO VÍDEO</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- CREATE -->
+      <div id="page-create" style="display:none">
+        <div class="step-indicator" style="margin-bottom:18px">
+          <div class="step active" id="step1"><div class="step-num">1</div><div class="step-label">Conceito</div></div>
+          <div class="step-line"></div>
+          <div class="step" id="step2"><div class="step-num">2</div><div class="step-label">Roteiro</div></div>
+          <div class="step-line"></div>
+          <div class="step" id="step3"><div class="step-num">3</div><div class="step-label">Produção</div></div>
+          <div class="step-line"></div>
+          <div class="step" id="step4"><div class="step-num">4</div><div class="step-label">Resultado</div></div>
+        </div>
+        <div class="create-layout">
+          <div class="create-main">
+            <div class="form-card"><div class="form-card-title">Sobre o que é seu vídeo?</div><textarea class="topic-input" id="topicInput" placeholder="Ex: O caso do homem que desapareceu em 1987 e ninguém investigou..." oninput="updatePreview()"></textarea></div>
+            <div class="form-card"><div class="form-card-title" style="margin-bottom:11px">Nicho</div><div class="pill-group"><div class="pill" onclick="selectPill(this,'niche')">True Crime</div><div class="pill selected" onclick="selectPill(this,'niche')">Mistério</div><div class="pill" onclick="selectPill(this,'niche')">Terror</div><div class="pill" onclick="selectPill(this,'niche')">Dark History</div></div></div>
+            <div class="form-card"><div class="form-card-title" style="margin-bottom:11px">Plataforma</div><div class="pill-group"><div class="pill selected" onclick="selectPill(this,'platform')">TikTok</div><div class="pill" onclick="selectPill(this,'platform')">YouTube</div><div class="pill" onclick="selectPill(this,'platform')">Kwai</div><div class="pill" onclick="selectPill(this,'platform')">Reels</div></div></div>
+            <div class="form-card"><div class="form-card-title" style="margin-bottom:11px">Persona Narrativa</div><div class="pill-group"><div class="pill" onclick="selectPill(this,'persona')">Investigador</div><div class="pill selected" onclick="selectPill(this,'persona')">Contador</div><div class="pill" onclick="selectPill(this,'persona')">Informante</div></div></div>
+            <div class="form-card"><div class="form-card-title" style="margin-bottom:11px">Template de Edição</div><div class="pill-group"><div class="pill" onclick="selectPill(this,'template')">🔴 Sangue Frio</div><div class="pill selected" onclick="selectPill(this,'template')">🟣 Névoa</div><div class="pill" onclick="selectPill(this,'template')">⚫ Abismo</div></div></div>
+            <div class="form-card"><div class="form-card-title">Duração: <span id="durationVal" style="color:var(--purple-vivid)">60s</span></div><input type="range" class="duration-slider" min="30" max="300" value="60" step="30" oninput="updateDuration(this.value)"><div class="duration-labels"><span>30s</span><span>1min</span><span>2min</span><span>3min</span><span>5min</span></div></div>
+            <button class="enter-btn" onclick="startProcessing()"><span>✦ Gerar Vídeo</span></button>
+          </div>
+          <div class="preview-panel">
+            <div class="panel-card"><div class="panel-title">Preview 9:16</div><div class="video-preview"><div><span class="preview-glyph">𖤍</span><div class="preview-text" id="previewText">aguardando tema...</div></div></div></div>
+            <div class="panel-card"><div class="panel-title">Configuração</div><div class="config-row"><span class="config-key">Nicho</span><span class="config-val" id="cfg-niche">Mistério</span></div><div class="config-row"><span class="config-key">Plataforma</span><span class="config-val" id="cfg-platform">TikTok</span></div><div class="config-row"><span class="config-key">Persona</span><span class="config-val" id="cfg-persona">Contador</span></div><div class="config-row"><span class="config-key">Template</span><span class="config-val" id="cfg-template">🟣 Névoa</span></div><div class="config-row"><span class="config-key">Duração</span><span class="config-val" id="cfg-duration">60s</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULTADO -->
+      <div id="page-resultado" style="display:none">
+        <div class="resultado-container">
+          <div class="video-player-wrap" id="videoPlayerWrap">
+            <video id="videoPlayer" controls playsinline>
+              <source id="videoSource" src="" type="video/mp4">
+            </video>
+            <div id="frame-oculto">
+              <div class="frame-codigo">AR-2847-FINAL</div>
+            </div>
+          </div>
+          <div class="resultado-actions">
+            <button class="btn-resultado download" id="btnDownload" onclick="downloadVideo()">↓ Baixar Vídeo</button>
+            <button class="btn-resultado novo" onclick="showPage('create')">+ Novo Vídeo</button>
+          </div>
+          <div class="seo-box" id="seoBox" style="display:none">
+            <div class="panel-title">Títulos e Hashtags</div>
+            <div class="seo-platform-tabs">
+              <div class="seo-tab active" onclick="showSeoTab('tiktok',this)">TikTok</div>
+              <div class="seo-tab" onclick="showSeoTab('youtube',this)">YouTube</div>
+              <div class="seo-tab" onclick="showSeoTab('kwai',this)">Kwai</div>
+              <div class="seo-tab" onclick="showSeoTab('reels',this)">Reels</div>
+            </div>
+            <div class="seo-content" id="seoContent"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY -->
+      <div id="page-history" style="display:none">
+        <div class="history-list">
+          <div class="history-item"><div class="history-thumb">𖤍</div><div class="history-info"><div class="history-title">O Caso das 7 Desaparições</div><div class="history-meta"><span class="video-niche">True Crime</span><span>60s</span><span>TikTok</span><span>hoje</span></div></div><div class="history-actions"><button class="btn-icon" onclick="appToast('Download iniciado')">↓</button><button class="btn-icon" onclick="appToast('Vídeo deletado')">✕</button></div></div>
+          <div class="history-item"><div class="history-thumb">◈</div><div class="history-info"><div class="history-title">A Conspiração do Silêncio</div><div class="history-meta"><span class="video-niche">Mistério</span><span>90s</span><span>YouTube</span><span>ontem</span></div></div><div class="history-actions"><button class="btn-icon" onclick="appToast('Download iniciado')">↓</button><button class="btn-icon" onclick="appToast('Vídeo deletado')">✕</button></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROCESSING -->
+<div id="processing-overlay">
+  <div class="process-logo">NO<span style="color:var(--purple-vivid)">X</span>AR ARCANA</div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.3em;color:var(--text-ghost)">GERANDO SEU VÍDEO</div>
+  <div class="process-steps">
+    <div class="process-step active" id="ps1"><div class="process-dot"></div><div class="process-label">Gerando roteiro</div></div>
+    <div class="process-step" id="ps2"><div class="process-dot"></div><div class="process-label">Criando imagens</div></div>
+    <div class="process-step" id="ps3"><div class="process-dot"></div><div class="process-label">Sintetizando narração</div></div>
+    <div class="process-step" id="ps4"><div class="process-dot"></div><div class="process-label">Sincronizando legendas</div></div>
+    <div class="process-step" id="ps5"><div class="process-dot"></div><div class="process-label">Montando vídeo final</div></div>
+  </div>
+  <div class="process-bar-wrap"><div class="process-bar" id="processBar"></div></div>
+</div>
+<div class="app-toast" id="appToast"></div>
+
+<script>
+
+// ════════════════════════════════════════════════════════════
+// APP JS — INTEGRADO COM SUPABASE + BACKEND
+// ════════════════════════════════════════════════════════════
+function enterApp() {
+  const loginEl = document.getElementById('login');
+  const appEl   = document.getElementById('screen-app');
+  loginEl.style.transition = 'opacity 0.5s ease';
+  loginEl.style.opacity = '0';
+  setTimeout(() => {
+    loginEl.style.display = 'none';
+    appEl.style.display = 'flex';
+    appEl.style.opacity = '0';
+    appEl.style.transition = 'opacity 0.6s ease';
+    setTimeout(() => { appEl.style.opacity = '1'; }, 30);
+    // Set user email display
+    const emailEl = document.getElementById('tab-register').style.display !== 'none'
+      ? document.getElementById('regEmail') : document.getElementById('loginEmail');
+    if (emailEl && emailEl.value) {
+      document.getElementById('userEmailDisplay').textContent = emailEl.value;
+      document.getElementById('userInitial').textContent = emailEl.value[0].toUpperCase();
+    }
+    appToast('Bem-vindo ao Arcana');
+  }, 500);
+}
+
+function doLogout() {
+  const appEl   = document.getElementById('screen-app');
+  const loginEl = document.getElementById('login');
+  appEl.style.transition = 'opacity 0.4s ease';
+  appEl.style.opacity = '0';
+  setTimeout(() => {
+    appEl.style.display = 'none';
+    loginEl.style.display = 'flex';
+    loginEl.style.opacity = '0';
+    loginEl.style.transition = 'opacity 0.5s ease';
+    setTimeout(() => { loginEl.style.opacity = '1'; }, 30);
+  }, 400);
+}
+
+function switchTab(t) {
+  document.querySelectorAll('.auth-tab').forEach((el,i) => el.classList.toggle('active', i===(t==='login'?0:1)));
+  const tl = document.getElementById('tab-login');
+  const tr = document.getElementById('tab-register');
+  if (tl) tl.style.display = t==='login'    ? 'block' : 'none';
+  if (tr) tr.style.display = t==='register' ? 'block' : 'none';
+}
+// Expõe funções críticas globalmente para onclick funcionar
+window.switchTab    = switchTab;
+window.handleEnter  = handleEnter;
+window.toggleVisibility = toggleVisibility;
+window.replayIntro  = replayIntro;
+window.showLogin    = showLogin;
+window.doLogout     = doLogout;
+window.showPage     = showPage;
+window.appToast     = appToast;
+window.downloadVideo = downloadVideo;
+window.showSeoTab   = showSeoTab;
+window.deletarVideo  = deletarVideo;
+window.closeTerminal = closeTerminal;
+window.fecharArquivoAR = fecharArquivoAR;
+window.verificarChave4 = verificarChave4;
+
+const pages = ['dashboard','create','history'];
+function showPage(p) {
+  pages.forEach(id => document.getElementById('page-'+id).style.display = id===p ? 'block' : 'none');
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const idx = pages.indexOf(p);
+  if(idx >= 0) document.querySelectorAll('.nav-item')[idx].classList.add('active');
+  const titles = {dashboard:'Dashboard', create:'Criar Vídeo', history:'Meus Vídeos'};
+  document.getElementById('topbar-title').textContent = titles[p] || p;
+}
+
+function selectPill(el, group) {
+  el.closest('.pill-group').querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+  updatePreview();
+}
+
+function updatePreview() {
+  const get = g => document.querySelector(`[onclick*="${g}"].selected`)?.textContent.trim() || '—';
+  document.getElementById('cfg-niche').textContent    = get('niche');
+  document.getElementById('cfg-platform').textContent = get('platform');
+  document.getElementById('cfg-persona').textContent  = get('persona');
+  document.getElementById('cfg-template').textContent = get('template');
+  const t = document.getElementById('topicInput')?.value;
+  const p = document.getElementById('previewText');
+  if(p) p.textContent = t?.length > 3 ? t.substring(0,36)+'...' : 'aguardando tema...';
+}
+
+function updateDuration(v) {
+  document.getElementById('durationVal').textContent = v + 's';
+  document.getElementById('cfg-duration').textContent = v + 's';
+}
+
+// ════════════════════════════════════════════════════════════
+// GERAÇÃO DE VÍDEO — PIPELINE REAL
+// ════════════════════════════════════════════════════════════
+let _videoBlob     = null;
+let _videoFilename = '';
+let _seoData       = null;
+let _abismoTimer   = null;
+let _chave1Mostrada = false;
+
+async function startProcessing() {
+  // Verifica sessão
+  if (!_session) {
+    appToast('⚠ faça login para gerar vídeos');
+    return;
+  }
+
+  const tema      = document.getElementById('topicInput')?.value.trim();
+  if (!tema) { appToast('⚠ descreva o tema do vídeo'); return; }
+
+  // Lê configurações selecionadas
+  const nichoTexto    = document.querySelector('[onclick*="niche"].selected')?.textContent.trim() || 'Mistério';
+  const plataforma    = document.querySelector('[onclick*="platform"].selected')?.textContent.trim().toLowerCase() || 'tiktok';
+  const personaTexto  = document.querySelector('[onclick*="persona"].selected')?.textContent.trim() || 'Contador';
+  const templateTexto = document.querySelector('[onclick*="template"].selected')?.textContent.trim() || '🟣 Névoa';
+  const duracaoStr    = document.getElementById('durationVal')?.textContent || '60s';
+  const duracao       = parseInt(duracaoStr) || 60;
+
+  // Mapeia para valores do backend
+  const nichoMap = {
+    'true crime': 'true_crime', 'mistério': 'misterio',
+    'terror': 'terror', 'dark history': 'dark_history'
+  };
+  const personaMap = {
+    'investigador': 'investigador', 'contador': 'contador', 'informante': 'informante'
+  };
+  const templateMap = {
+    '🔴 sangue frio': 'sangue_frio', '🟣 névoa': 'nevoa', '⚫ abismo': 'abismo'
+  };
+
+  const nicho    = nichoMap[nichoTexto.toLowerCase()] || 'misterio';
+  const persona  = personaMap[personaTexto.toLowerCase()] || 'contador';
+  const template = templateMap[templateTexto.toLowerCase()] || 'nevoa';
+
+  // Mostra overlay
+  const ov = document.getElementById('processing-overlay');
+  ov.classList.add('show');
+
+  // Reset etapas
+  [1,2,3,4,5].forEach(n => {
+    const el = document.getElementById('ps'+n);
+    if (el) el.classList.remove('active','done');
+  });
+  document.getElementById('ps1')?.classList.add('active');
+  const bar = document.getElementById('processBar');
+  if (bar) bar.style.width = '0%';
+
+  // Animação de progresso enquanto aguarda
+  const duracoes = [8000, 15000, 6000, 4000, 10000];
+  let etapaAtual = 0;
+  const timers = [];
+
+  function avancarEtapa() {
+    if (etapaAtual > 0) {
+      document.getElementById('ps'+etapaAtual)?.classList.remove('active');
+      document.getElementById('ps'+etapaAtual)?.classList.add('done');
+    }
+    etapaAtual++;
+    if (etapaAtual <= 5) {
+      document.getElementById('ps'+etapaAtual)?.classList.add('active');
+      if (bar) bar.style.width = ((etapaAtual/5)*85) + '%';
+    }
+  }
+
+  avancarEtapa();
+  let acumulado = 0;
+  duracoes.forEach((d, i) => {
+    acumulado += d;
+    timers.push(setTimeout(() => { if (etapaAtual < i+2) avancarEtapa(); }, acumulado));
+  });
+
+  try {
+    // Chamada real ao backend
+    const response = await apiDownload('/api/video/gerar', {
+      method: 'POST',
+      body: JSON.stringify({ tema, nicho, plataforma, duracao, persona, template }),
+    });
+
+    // Para animação
+    timers.forEach(clearTimeout);
+
+    if (!response || !response.ok) {
+      ov.classList.remove('show');
+      appToast('⚠ erro ao gerar vídeo — tente novamente');
+      return;
+    }
+
+    // Finaliza barra
+    [1,2,3,4,5].forEach(n => {
+      document.getElementById('ps'+n)?.classList.remove('active');
+      document.getElementById('ps'+n)?.classList.add('done');
+    });
+    if (bar) bar.style.width = '100%';
+
+    // Salva blob para download
+    _videoBlob = await response.blob();
+    const cd = response.headers.get('Content-Disposition') || '';
+    _videoFilename = cd.match(/filename[^;=
+]*=((['"]).*?|[^;
+]*)/)?.[1]?.replace(/['"]/g,'') || 'noxar_video.mp4';
+
+    setTimeout(() => {
+      ov.classList.remove('show');
+      mostrarResultado();
+      checarChave2();
+    }, 600);
+
+  } catch (err) {
+    timers.forEach(clearTimeout);
+    ov.classList.remove('show');
+    console.error('Erro ao gerar vídeo:', err);
+    appToast('⚠ erro de conexão com o servidor');
+  }
+}
+
+function mostrarResultado() {
+  if (!_videoBlob) return;
+  showPage('resultado');
+
+  const url    = URL.createObjectURL(_videoBlob);
+  const src    = document.getElementById('videoSource');
+  const player = document.getElementById('videoPlayer');
+
+  if (src)    { src.src = url; }
+  if (player) {
+    player.load();
+    player.addEventListener('ended', mostrarFrameOculto, { once: true });
+  }
+
+  if (_seoData) {
+    const seoBox = document.getElementById('seoBox');
+    if (seoBox) seoBox.style.display = 'block';
+    showSeoTab('tiktok', document.querySelector('.seo-tab'));
+  }
+
+  appToast('✓ Vídeo gerado com sucesso');
+}
+
+function downloadVideo() {
+  if (!_videoBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(_videoBlob);
+  a.download = _videoFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function showSeoTab(plataforma, tabEl) {
+  if (!_seoData) return;
+  document.querySelectorAll('.seo-tab').forEach(t => t.classList.remove('active'));
+  if (tabEl) tabEl.classList.add('active');
+  const titulos  = _seoData.titulos || [];
+  const titulo   = titulos.find(t => t.plataforma === plataforma)?.titulo || '';
+  const hashtags = _seoData.hashtags?.[plataforma] || [];
+  const desc     = _seoData.descricao || '';
+  const el = document.getElementById('seoContent');
+  if (el) el.innerHTML = `
+    <div class="seo-title-display">${titulo}</div>
+    <div style="font-size:11px;color:var(--text-ghost);margin-bottom:8px">${desc}</div>
+    <div class="hashtag-list">${hashtags.map(h=>`<span class="hashtag">${h}</span>`).join('')}</div>
+  `;
+}
+
+// Chave 1 — Abismo 33s
+function iniciarWatchAbismo() {
+  if (_chave1Mostrada) return;
+  clearTimeout(_abismoTimer);
+  _abismoTimer = setTimeout(() => {
+    if (_chave1Mostrada) return;
+    mostrarCoordenada();
+  }, 33000);
+}
+
+function pararWatchAbismo() { clearTimeout(_abismoTimer); }
+
+function mostrarCoordenada() {
+  _chave1Mostrada = true;
+  const flash = document.getElementById('coordenada-flash');
+  if (flash) flash.classList.add('show');
+  setTimeout(() => {
+    if (flash) flash.classList.remove('show');
+    registrarChave('chave1', '40.7128');
+  }, 2500);
+}
+
+// Chave 2 — frame oculto
+function checarChave2() {
+  if (localStorage.getItem('noxar_chave2_vista')) return;
+}
+
+function mostrarFrameOculto() {
+  if (localStorage.getItem('noxar_chave2_vista')) return;
+  localStorage.setItem('noxar_chave2_vista', '1');
+  const frame = document.getElementById('frame-oculto');
+  if (frame) frame.classList.add('show');
+  setTimeout(() => {
+    if (frame) frame.classList.remove('show');
+    registrarChave('chave2', 'AR-2847-FINAL');
+  }, 500);
+}
+
+// Chave 4 — input terminal
+function atualizarTerminalComChave4() {
+  if (!_keysStatus?.chave4_disponivel) return;
+  const wrap = document.getElementById('terminalInputWrap');
+  if (wrap) wrap.classList.add('show');
+}
+
+function verificarChave4(valor) {
+  if (valor.trim() === '2847') {
+    registrarChave('chave4', '2847');
+    const wrap = document.getElementById('terminalInputWrap');
+    if (wrap) wrap.classList.remove('show');
+  }
+}
+
+// Sobrescreve selectPill para detectar Abismo
+const _origSelectPill = typeof selectPill !== 'undefined' ? selectPill : null;
+window.selectPill = function(el, group) {
+  // Chama original
+  el.closest('.pill-group').querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+  updatePreview();
+  if (group === 'template') {
+    const txt = el.textContent.trim().toLowerCase();
+    if (txt.includes('abismo')) iniciarWatchAbismo();
+    else pararWatchAbismo();
+  }
+};
+
+function appToast(msg) {
+  const t = document.getElementById('appToast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+</script>
+
+<!-- COORDENADA FLASH (Chave 1) -->
+<div id="coordenada-flash">
+  <div class="coordenada-texto">
+    40.7128° N, 74.0060° W<br>
+    <span style="font-size:0.7em;opacity:0.7;letter-spacing:0.3em">1987</span>
+  </div>
+</div>
+
+<!-- ARQUIVO A.R. OVERLAY -->
+<div id="ar-arquivo-overlay">
+  <div class="ar-arquivo-titulo">𖤍 ARQUIVO A.R.</div>
+  <div class="ar-arquivo-sub">> arquivo desbloqueado — acesso concedido</div>
+  <div class="ar-mensagem" id="arMensagemTexto">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-ghost)">
+      carregando...
+    </span>
+  </div>
+  <button class="ar-fechar" onclick="fecharArquivoAR()">[ fechar arquivo ]</button>
+</div>
+
+<!-- NOTIFICAÇÃO DE CHAVE -->
+<div class="key-notif" id="keyNotif">
+  <div class="key-notif-title" id="keyNotifTitle">𖤍 CHAVE ENCONTRADA</div>
+  <div class="key-notif-msg" id="keyNotifMsg"></div>
+  <div class="key-notif-count" id="keyNotifCount"></div>
+</div>
+
+</body>
+</html>
+1
