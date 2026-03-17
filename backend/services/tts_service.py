@@ -1,412 +1,234 @@
 """
 NOXAR ARCANA — TTS Service
-Narração com Edge TTS — voz masculina PT-BR
-Inclui tratamento de áudio: normalização, reverb sutil, fade in/out
+Narração com ElevenLabs — 3 vozes masculinas PT-BR por persona
+Fallback para gTTS se ElevenLabs falhar
 """
 
 import os
-import asyncio
 import logging
 import subprocess
-import tempfile
-from pathlib import Path
-
-import edge_tts
+import shutil
+import requests
+from gtts import gTTS
 
 logger = logging.getLogger(__name__)
 
-# ─── VOZES DISPONÍVEIS PT-BR ────────────────────────────────────
+# ─── VOZES ELEVENLABS ────────────────────────────────────
+# IDs de vozes masculinas disponíveis no plano gratuito
 VOZES = {
-    # Masculinas
-    "masculino_padrao":    "pt-BR-AntonioNeural",   # Principal — profissional
-    "masculino_dramatico": "pt-BR-AntonioNeural",   # Mesmo modelo com SSML
-    # Femininas (backup)
-    "feminino_padrao":     "pt-BR-FranciscaNeural",
+    # Profissional, seco, jornalístico
+    "investigador": {
+        "voice_id": "onwK4e9ZLuTAKqWW03F9",  # Daniel
+        "stability":        0.75,
+        "similarity_boost": 0.75,
+        "style":            0.2,
+        "speaking_rate":    0.9,
+    },
+    # Caloroso, narrativo, próximo
+    "contador": {
+        "voice_id": "N2lVS1w4EtoT3dr4eOWO",  # Callum
+        "stability":        0.65,
+        "similarity_boost": 0.80,
+        "style":            0.35,
+        "speaking_rate":    0.85,
+    },
+    # Tenso, urgente, conspiratório
+    "informante": {
+        "voice_id": "CwhRBWXzGAHq8TQ4Fs17",  # Roger
+        "stability":        0.55,
+        "similarity_boost": 0.85,
+        "style":            0.45,
+        "speaking_rate":    1.0,
+    },
 }
 
-# Configurações de prosódia por persona
-PROSODY = {
-    "investigador": {"rate": "-8%",  "pitch": "-3Hz",  "volume": "+5%"},
-    "contador":     {"rate": "-12%", "pitch": "-6Hz",  "volume": "+3%"},
-    "informante":   {"rate": "+5%",  "pitch": "-2Hz",  "volume": "+8%"},
-}
-
-# Pausas estratégicas (ms) para dramaticidade
-PAUSA_CURTA  = 400   # Entre frases
-PAUSA_MEDIA  = 700   # Entre parágrafos / loop aberto
-PAUSA_LONGA  = 1200  # Antes de revelação
+ELEVENLABS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+MODEL_ID       = "eleven_multilingual_v2"
 
 
-# ─── SSML — MARCA XML PARA CONTROLE FINO DA VOZ ─────────────────
-def build_ssml(texto: str, persona: str = "contador") -> str:
-    """
-    Constrói SSML para controle fino de prosódia.
-    Adiciona pausas estratégicas e ênfases baseadas na pontuação.
-    """
-    p = PROSODY.get(persona, PROSODY["contador"])
-
-    # Processa pausas baseadas em pontuação
-    texto_ssml = texto
-
-    # Reticências → pausa dramática longa
-    texto_ssml = texto_ssml.replace("...", f'<break time="{PAUSA_LONGA}ms"/>')
-
-    # Ponto final → pausa média
-    texto_ssml = texto_ssml.replace(". ", f'.<break time="{PAUSA_MEDIA}ms"/> ')
-
-    # Vírgula → pausa curta
-    texto_ssml = texto_ssml.replace(", ", f',<break time="{PAUSA_CURTA}ms"/> ')
-
-    # Travessão → pausa de ênfase
-    texto_ssml = texto_ssml.replace(" — ", f'<break time="{PAUSA_MEDIA}ms"/>— ')
-
-    # Texto em maiúsculas → ênfase
-    import re
-    texto_ssml = re.sub(
-        r'\b([A-Z]{3,})\b',
-        r'<emphasis level="strong">\1</emphasis>',
-        texto_ssml
-    )
-
-    ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
-    xmlns:mstts="https://www.w3.org/2001/mstts"
-    xml:lang="pt-BR">
-  <voice name="{VOZES['masculino_padrao']}">
-    <mstts:express-as style="narration-professional">
-      <prosody rate="{p['rate']}" pitch="{p['pitch']}" volume="{p['volume']}">
-        {texto_ssml}
-      </prosody>
-    </mstts:express-as>
-  </voice>
-</speak>"""
-
-    return ssml
-
-
-# ─── GERAÇÃO DE ÁUDIO ────────────────────────────────────────────
-async def _gerar_audio_async(
-    texto: str,
-    output_path: str,
-    persona: str = "contador",
-    usar_ssml: bool = True,
-) -> bool:
-    """Gera áudio MP3 com Edge TTS de forma assíncrona."""
+# ─── UTILIDADES FFMPEG ───────────────────────────────────
+def run_ffmpeg(cmd: list, desc: str = "") -> bool:
     try:
-        voz = VOZES["masculino_padrao"]
-
-        if usar_ssml:
-            ssml = build_ssml(texto, persona)
-            communicate = edge_tts.Communicate(ssml, voz, rate="-5%")
-        else:
-            # Fallback sem SSML
-            communicate = edge_tts.Communicate(
-                texto,
-                voz,
-                rate="-10%",
-                volume="+5%",
-                pitch="-5Hz",
-            )
-
-        await communicate.save(output_path)
-        logger.info(f"Áudio gerado: {output_path}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Erro Edge TTS: {e}")
-        # Tenta sem SSML como fallback
-        if usar_ssml:
-            logger.info("Tentando sem SSML...")
-            return await _gerar_audio_async(texto, output_path, persona, usar_ssml=False)
-        return False
-
-
-def gerar_audio(
-    texto: str,
-    output_path: str,
-    persona: str = "contador",
-) -> bool:
-    """
-    Gera narração em MP3 com voz masculina PT-BR.
-
-    Args:
-        texto: texto completo da narração
-        output_path: caminho do arquivo MP3 de saída
-        persona: investigador | contador | informante
-
-    Returns:
-        True se gerou com sucesso, False se falhou
-    """
-    try:
-        asyncio.run(_gerar_audio_async(texto, output_path, persona))
-        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
-    except RuntimeError:
-        # Se já existe um event loop (ex: Jupyter)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(
-                _gerar_audio_async(texto, output_path, persona)
-            )
-            return os.path.exists(output_path) and os.path.getsize(output_path) > 0
-        finally:
-            loop.close()
-
-
-# ─── TRATAMENTO DE ÁUDIO COM FFMPEG ──────────────────────────────
-def tratar_audio(
-    input_path: str,
-    output_path: str,
-    normalizar: bool = True,
-    reverb: bool = True,
-    fade_in: float = 0.1,
-    fade_out: float = 0.3,
-) -> bool:
-    """
-    Aplica tratamentos profissionais no áudio:
-    - Normalização de volume (loudnorm)
-    - Reverb sutil para dramaticidade
-    - Fade in/out suave
-    - Remoção de silêncio excessivo
-
-    Args:
-        input_path:  caminho do MP3 bruto
-        output_path: caminho do MP3 tratado
-        normalizar:  aplicar loudnorm (EBU R128)
-        reverb:      aplicar reverb sutil
-        fade_in:     duração do fade in em segundos
-        fade_out:    duração do fade out em segundos
-    """
-    try:
-        # Constrói filtros de áudio
-        filtros = []
-
-        # 1. Remove silêncio inicial excessivo
-        filtros.append("silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.1")
-
-        # 2. Reverb sutil (IR convolution simulado com aecho)
-        if reverb:
-            # aecho=in_gain:out_gain:delay:decay
-            filtros.append("aecho=0.8:0.88:60:0.4")
-
-        # 3. EQ — leve boost nos graves para voz dark mais profunda
-        filtros.append("equalizer=f=120:width_type=o:width=2:g=2")
-
-        # 4. Normalização EBU R128
-        if normalizar:
-            filtros.append("loudnorm=I=-16:TP=-1.5:LRA=11")
-
-        # 5. Fade in/out
-        # fade in e out são aplicados separadamente após obter duração
-        filtro_str = ",".join(filtros)
-
-        # Primeiro passo: aplica filtros principais
-        tmp_path = input_path.replace(".mp3", "_tmp.mp3")
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", input_path,
-            "-af", filtro_str,
-            "-ar", "44100",
-            "-ac", "1",       # Mono — suficiente para narração
-            "-b:a", "128k",
-            tmp_path
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
-            logger.error(f"FFmpeg tratamento: {result.stderr}")
-            # Copia sem tratamento como fallback
-            import shutil
-            shutil.copy(input_path, output_path)
-            return True
-
-        # Segundo passo: detecta duração e aplica fade
-        duracao = _get_duracao(tmp_path)
-        if duracao and duracao > (fade_in + fade_out):
-            fade_out_start = duracao - fade_out
-            cmd2 = [
-                "ffmpeg", "-y",
-                "-i", tmp_path,
-                "-af", f"afade=t=in:st=0:d={fade_in},afade=t=out:st={fade_out_start:.3f}:d={fade_out}",
-                "-ar", "44100",
-                "-b:a", "128k",
-                output_path
-            ]
-            result2 = subprocess.run(cmd2, capture_output=True, text=True)
-            if result2.returncode != 0:
-                logger.warning("Fade falhou, usando sem fade")
-                import shutil
-                shutil.copy(tmp_path, output_path)
-        else:
-            import shutil
-            shutil.copy(tmp_path, output_path)
-
-        # Limpa temporário
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-        logger.info(f"Áudio tratado: {output_path}")
-        return os.path.exists(output_path)
-
+            logger.warning(f"FFmpeg {desc}: {result.stderr[-200:]}")
+            return False
+        return True
     except Exception as e:
-        logger.error(f"Erro ao tratar áudio: {e}")
+        logger.error(f"FFmpeg exceção {desc}: {e}")
         return False
 
 
-def _get_duracao(audio_path: str) -> float | None:
-    """Obtém duração do áudio em segundos via ffprobe."""
+def get_duracao(path: str) -> float | None:
     try:
-        cmd = [
-            "ffprobe", "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            audio_path
-        ]
+        cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+               "-of", "default=noprint_wrappers=1:nokey=1", path]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             return float(result.stdout.strip())
-    except Exception as e:
-        logger.warning(f"Não foi possível obter duração: {e}")
+    except Exception:
+        pass
     return None
 
 
-# ─── TRILHA SONORA DE FUNDO ───────────────────────────────────────
-def gerar_silencio(duracao_segundos: float, output_path: str) -> bool:
+# ─── ELEVENLABS ──────────────────────────────────────────
+def gerar_elevenlabs(texto: str, output_path: str, persona: str = "contador") -> bool:
     """
-    Gera arquivo de silêncio com a duração exata.
-    Usado como placeholder quando não há música de fundo.
+    Gera narração via ElevenLabs API.
     """
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        logger.warning("ELEVENLABS_API_KEY não configurada")
+        return False
+
+    cfg = VOZES.get(persona, VOZES["contador"])
+
+    url = ELEVENLABS_URL.format(voice_id=cfg["voice_id"])
+
+    headers = {
+        "xi-api-key":   api_key,
+        "Content-Type": "application/json",
+        "Accept":       "audio/mpeg",
+    }
+
+    payload = {
+        "text":     texto,
+        "model_id": MODEL_ID,
+        "voice_settings": {
+            "stability":         cfg["stability"],
+            "similarity_boost":  cfg["similarity_boost"],
+            "style":             cfg["style"],
+            "use_speaker_boost": True,
+        },
+    }
+
     try:
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "lavfi",
-            "-i", f"anullsrc=r=44100:cl=mono",
-            "-t", str(duracao_segundos),
-            "-ar", "44100",
-            "-b:a", "32k",
-            output_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return result.returncode == 0
+        logger.info(f"ElevenLabs — persona={persona} voice_id={cfg['voice_id']}")
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+
+        if response.status_code == 200:
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+            ok = os.path.exists(output_path) and os.path.getsize(output_path) > 0
+            if ok:
+                logger.info(f"ElevenLabs OK: {output_path}")
+            return ok
+
+        elif response.status_code == 401:
+            logger.error("ElevenLabs: API key inválida")
+        elif response.status_code == 422:
+            logger.error(f"ElevenLabs: texto inválido — {response.text[:200]}")
+        elif response.status_code == 429:
+            logger.warning("ElevenLabs: rate limit ou cota esgotada")
+        else:
+            logger.error(f"ElevenLabs status {response.status_code}: {response.text[:200]}")
+
+        return False
+
     except Exception as e:
-        logger.error(f"Erro ao gerar silêncio: {e}")
+        logger.error(f"ElevenLabs exceção: {e}")
         return False
 
 
-def mixar_narracao_com_musica(
-    narracao_path: str,
-    musica_path: str,
-    output_path: str,
-    volume_musica: float = 0.15,
-) -> bool:
-    """
-    Mixa narração com trilha sonora de fundo.
-    Aplica ducking automático: música abaixa quando narração fala.
+# ─── FALLBACK: gTTS ──────────────────────────────────────
+def gerar_gtts(texto: str, output_path: str) -> bool:
+    """Fallback com gTTS se ElevenLabs falhar."""
+    try:
+        logger.info("Fallback: gerando com gTTS...")
+        tts = gTTS(text=texto, lang="pt", tld="com.br", slow=False)
+        tts.save(output_path)
+        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
+    except Exception as e:
+        logger.error(f"gTTS fallback falhou: {e}")
+        return False
 
-    Args:
-        narracao_path: caminho do MP3 da narração tratada
-        musica_path:   caminho do MP3 da música de fundo
-        output_path:   caminho do MP3 mixado
-        volume_musica: volume relativo da música (0.0-1.0)
+
+# ─── TRATAMENTO DE ÁUDIO ────────────────────────────────
+def tratar_audio(input_path: str, output_path: str) -> bool:
+    """
+    Tratamento profissional:
+    - Normalização EBU R128
+    - EQ boost de graves 120hz
+    - Fade in 0.1s / fade out 0.4s
     """
     try:
-        duracao_narracao = _get_duracao(narracao_path)
-        if not duracao_narracao:
-            logger.warning("Não foi possível detectar duração — usando narração sem música")
-            import shutil
-            shutil.copy(narracao_path, output_path)
+        duracao = get_duracao(input_path)
+        if not duracao:
+            shutil.copy(input_path, output_path)
             return True
 
-        # Ducking automático via sidechaining
-        # A música abaixa automaticamente quando a narração está ativa
+        fade_out_start = max(0, duracao - 0.5)
+
         filtro = (
-            f"[1:a]aloop=loop=-1:size=2e+09[music_loop];"  # Loop da música
-            f"[music_loop]volume={volume_musica}[music_vol];"
-            f"[0:a][music_vol]amix=inputs=2:duration=first:dropout_transition=2[out]"
+            "equalizer=f=120:width_type=o:width=2:g=2,"
+            "loudnorm=I=-16:TP=-1.5:LRA=11,"
+            f"afade=t=in:st=0:d=0.1,"
+            f"afade=t=out:st={fade_out_start:.3f}:d=0.4"
         )
 
         cmd = [
             "ffmpeg", "-y",
-            "-i", narracao_path,
-            "-i", musica_path,
-            "-filter_complex", filtro,
-            "-map", "[out]",
-            "-t", str(duracao_narracao),
+            "-i", input_path,
+            "-af", filtro,
             "-ar", "44100",
+            "-ac", "1",
             "-b:a", "128k",
             output_path
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.warning(f"Mixagem falhou: {result.stderr}")
-            import shutil
-            shutil.copy(narracao_path, output_path)
-            return True
+        if not run_ffmpeg(cmd, "tratar_audio"):
+            shutil.copy(input_path, output_path)
 
-        logger.info(f"Mixagem concluída: {output_path}")
-        return True
+        return os.path.exists(output_path)
 
     except Exception as e:
-        logger.error(f"Erro na mixagem: {e}")
-        return False
+        logger.error(f"Erro tratar_audio: {e}")
+        shutil.copy(input_path, output_path)
+        return True
 
 
-# ─── PIPELINE TTS COMPLETO ───────────────────────────────────────
+# ─── PIPELINE COMPLETO ───────────────────────────────────
 def pipeline_tts(
     narracao_completa: str,
     output_dir: str,
     persona: str = "contador",
-    musica_path: str | None = None,
 ) -> dict | None:
     """
-    Pipeline completo de geração de áudio:
-    1. Gera narração com Edge TTS
-    2. Aplica tratamento profissional
-    3. Mixa com música de fundo (se fornecida)
-
-    Args:
-        narracao_completa: texto completo de todas as cenas
-        output_dir:        pasta onde salvar os arquivos
-        persona:           investigador | contador | informante
-        musica_path:       caminho opcional para música de fundo
+    Pipeline completo:
+    1. Tenta ElevenLabs (voz realista por persona)
+    2. Fallback para gTTS se ElevenLabs falhar
+    3. Tratamento profissional com FFmpeg
 
     Returns:
-        dict com caminhos dos arquivos gerados ou None se falhar
+        dict com raw, final, duracao — ou None se tudo falhar
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    raw_path     = os.path.join(output_dir, "narracao_raw.mp3")
-    treated_path = os.path.join(output_dir, "narracao_treated.mp3")
-    final_path   = os.path.join(output_dir, "narracao_final.mp3")
+    raw_path   = os.path.join(output_dir, "narracao_raw.mp3")
+    final_path = os.path.join(output_dir, "narracao_final.mp3")
 
-    # 1. Gera narração
-    logger.info("Gerando narração com Edge TTS...")
-    if not gerar_audio(narracao_completa, raw_path, persona):
-        logger.error("Falha na geração de áudio")
+    # 1. Tenta ElevenLabs
+    ok = gerar_elevenlabs(narracao_completa, raw_path, persona)
+
+    # 2. Fallback gTTS
+    if not ok:
+        logger.warning("ElevenLabs falhou — usando gTTS como fallback")
+        ok = gerar_gtts(narracao_completa, raw_path)
+
+    if not ok:
+        logger.error("Falha em todos os TTS")
         return None
 
-    # 2. Tratamento profissional
+    # 3. Tratamento
     logger.info("Aplicando tratamento de áudio...")
-    if not tratar_audio(raw_path, treated_path):
-        logger.warning("Tratamento falhou — usando áudio bruto")
-        import shutil
-        shutil.copy(raw_path, treated_path)
+    tratar_audio(raw_path, final_path)
 
-    # 3. Mixa com música (se fornecida)
-    if musica_path and os.path.exists(musica_path):
-        logger.info("Mixando com música de fundo...")
-        mixar_narracao_com_musica(treated_path, musica_path, final_path)
-    else:
-        import shutil
-        shutil.copy(treated_path, final_path)
-
-    duracao = _get_duracao(final_path)
-    logger.info(f"TTS pipeline concluído — duração: {duracao:.1f}s")
+    duracao = get_duracao(final_path)
+    logger.info(f"TTS pipeline concluído — {duracao:.1f}s" if duracao else "TTS concluído")
 
     return {
-        "raw":      raw_path,
-        "treated":  treated_path,
-        "final":    final_path,
-        "duracao":  duracao,
+        "raw":     raw_path,
+        "final":   final_path,
+        "duracao": duracao,
     }
 
