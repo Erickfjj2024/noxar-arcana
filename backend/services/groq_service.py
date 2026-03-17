@@ -76,14 +76,14 @@ def call_groq(
     temperature: float = 0.85,
     max_tokens: int = 4000,
     top_p: float = 0.95,
-    max_retries: int = 3,
+    max_retries: int = 2,
 ) -> dict | None:
     """
     Chama Groq com retry automático e validação de JSON.
     Reduz temperatura a cada tentativa para aumentar consistência.
     """
     client  = get_client()
-    temps   = [temperature, temperature * 0.6, 0.2]
+    temps   = [temperature, 0.2]
 
     for attempt, temp in enumerate(temps[:max_retries]):
         try:
@@ -97,6 +97,7 @@ def call_groq(
                 temperature=temp,
                 max_tokens=max_tokens,
                 top_p=top_p,
+                timeout=90,
             )
 
             raw  = response.choices[0].message.content
@@ -499,28 +500,41 @@ def pipeline_roteiro(
 
     logger.info(f"Roteiro: {len(roteiro.get('cenas', []))} cenas")
 
-    # 2. Storyboard por cena
+    # 2. Storyboard — gerado diretamente do roteiro sem chamadas extras ao Groq
     storyboard_completo = []
     timestamp_atual = 0.0
+    NEGATIVE = "cartoon, anime, illustration, bright colors, happy, sunlight, faces clearly visible, text overlay, watermark, low quality, blurry"
+    transicao_map = {"sangue_frio": "cut", "nevoa": "fade", "abismo": "dissolve"}
 
     for i, cena in enumerate(roteiro.get("cenas", [])):
-        storyboard = gerar_storyboard(
-            cena_numero=cena.get("numero", i + 1),
-            narracao=cena.get("narracao", ""),
-            emocao=cena.get("emocao", "misterio"),
-            nicho=nicho,
-            template=template,
-            duracao_segundos=cena.get("duracao_segundos", 10),
-            timestamp_inicio=timestamp_atual,
-            seed_base=(i + 1) * 1000,
-        )
-        if storyboard:
-            storyboard_completo.append(storyboard)
+        duracao_cena = float(cena.get("duracao_segundos", 10))
+        n_segs = max(1, int(duracao_cena / 4))
+        segmentos = []
+        for s in range(n_segs):
+            t_inicio = timestamp_atual + s * (duracao_cena / n_segs)
+            t_fim    = timestamp_atual + (s + 1) * (duracao_cena / n_segs)
+            segmentos.append({
+                "segmento_id":              f"cena_{i+1}_seg_{s+1}",
+                "timestamp_inicio":         round(t_inicio, 2),
+                "timestamp_fim":            round(t_fim, 2),
+                "trecho_narracao":          cena.get("narracao", "")[:80],
+                "tipo_plano":               ["establishing","medium","close-up","dutch-angle"][s % 4],
+                "emocao":                   cena.get("emocao", "misterio"),
+                "intensidade":              min(10, 4 + i),
+                "prompt_imagem":            cena.get("prompt_imagem", "dark cinematic scene, mysterious atmosphere, no faces, cinematic 8k"),
+                "prompt_negativo":          cena.get("prompt_negativo", NEGATIVE),
+                "seed":                     (i + 1) * 1000 + s,
+                "duracao_exibicao_segundos": round(duracao_cena / n_segs, 2),
+                "transicao_saida":          transicao_map.get(template, "fade"),
+            })
+        storyboard_completo.append({
+            "cena_numero":     cena.get("numero", i + 1),
+            "total_segmentos": n_segs,
+            "segmentos":       segmentos,
+        })
+        timestamp_atual += duracao_cena
 
-        timestamp_atual += cena.get("duracao_segundos", 10)
-        time.sleep(0.3)  # rate limit
-
-    logger.info(f"Storyboard: {len(storyboard_completo)} cenas")
+    logger.info(f"Storyboard: {len(storyboard_completo)} cenas (direto do roteiro)")
 
     # 3. SEO
     seo = gerar_seo(tema, nicho, roteiro.get("titulo", tema))
@@ -531,3 +545,4 @@ def pipeline_roteiro(
         "storyboard": storyboard_completo,
         "seo":        seo,
     }
+
