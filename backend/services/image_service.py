@@ -21,9 +21,9 @@ POLLINATIONS_BASE = "https://image.pollinations.ai/prompt"
 IMAGE_WIDTH       = 1080
 IMAGE_HEIGHT      = 1920   # 9:16 vertical
 IMAGE_MODEL       = "flux"
-MAX_RETRIES       = 3
+MAX_RETRIES       = 2
 TIMEOUT_SEGUNDOS  = 60
-DELAY_ENTRE_IMGS  = 1.0    # Respeita rate limit
+DELAY_ENTRE_IMGS  = 3.0    # Delay maior para evitar 429
 
 
 # ─── UTILITÁRIOS ─────────────────────────────────────────────────
@@ -93,7 +93,7 @@ async def _baixar_imagem_async(
             logger.warning(f"Erro tentativa {attempt + 1}: {e}")
 
         if attempt < retries - 1:
-            await asyncio.sleep(2 ** attempt)  # backoff exponencial
+            await asyncio.sleep(5 * (attempt + 1))  # backoff maior
 
     return False
 
@@ -111,7 +111,7 @@ async def _baixar_lote_async(
     resultados = []
 
     # Semáforo para limitar concorrência (máx 3 simultâneas)
-    semaforo = asyncio.Semaphore(3)
+    semaforo = asyncio.Semaphore(1)  # Sequencial — evita 429
 
     async def baixar_com_semaforo(seg: dict, idx: int) -> dict:
         async with semaforo:
