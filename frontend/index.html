@@ -1146,56 +1146,113 @@ function updateCfg() {
 // ════════════════════════════════════════════════════════
 let _vBlob = null, _vFilename = 'noxar_video.mp4', _seoData = null;
 
+let _pollingInterval = null;
+let _currentVideoId  = null;
+
 async function startProcessing() {
   if (!_session) { toast('⚠ faça login primeiro'); return; }
   const tema = document.getElementById('topicInput')?.value.trim();
   if (!tema) { toast('⚠ descreva o tema do vídeo'); return; }
 
-  const g = id => document.querySelector('#pills-'+id+' .pill.sel')?.textContent.trim() || '';
+  const getPill = id => document.querySelector('#pills-'+id+' .pill.sel')?.textContent.trim() || '';
   const nichoMap = { 'mistério':'misterio','true crime':'true_crime','terror':'terror','dark history':'dark_history' };
   const platMap  = { 'tiktok':'tiktok','youtube':'youtube','kwai':'kwai','reels':'reels' };
   const persMap  = { 'contador':'contador','investigador':'investigador','informante':'informante' };
   const templMap = { 'névoa':'nevoa','sangue frio':'sangue_frio','abismo':'abismo' };
 
-  const nicho    = nichoMap[g('nicho').toLowerCase()]    || 'misterio';
-  const plat     = platMap[g('plat').toLowerCase()]      || 'tiktok';
-  const persona  = persMap[g('persona').toLowerCase()]   || 'contador';
-  const template = templMap[g('template').toLowerCase().replace(/[🟣🔴⚫]\s*/,'')] || 'nevoa';
+  const nicho    = nichoMap[getPill('nicho').toLowerCase()]    || 'misterio';
+  const plat     = platMap[getPill('plat').toLowerCase()]      || 'tiktok';
+  const persona  = persMap[getPill('persona').toLowerCase()]   || 'contador';
+  const template = templMap[getPill('template').toLowerCase().replace(/[🟣🔴⚫]\s*/,'')] || 'nevoa';
   const duracao  = parseInt(document.getElementById('durSlider')?.value) || 60;
 
   const ov = document.getElementById('proc-overlay');
   ov.classList.add('show');
   resetSteps();
 
-  const timers = [];
-  const durs = [8000,15000,6000,4000,10000];
-  let cur = 0;
+  // Anima etapas baseado no tempo estimado
+  const durs = [15000, 40000, 12000, 8000, 20000];
+  let stepCur = 0;
   function nextStep() {
-    if (cur>0) { document.getElementById('ps'+cur)?.classList.replace('active','done'); }
-    cur++;
-    if (cur<=5) { document.getElementById('ps'+cur)?.classList.add('active'); document.getElementById('procBar').style.width=(cur/5*80)+'%'; }
+    if (stepCur > 0) {
+      document.getElementById('ps'+stepCur)?.classList.remove('active');
+      document.getElementById('ps'+stepCur)?.classList.add('done');
+    }
+    stepCur++;
+    if (stepCur <= 5) {
+      document.getElementById('ps'+stepCur)?.classList.add('active');
+      document.getElementById('procBar').style.width = (stepCur/5*80) + '%';
+    }
   }
   nextStep();
-  let acc=0; durs.forEach((d,i) => { acc+=d; timers.push(setTimeout(()=>{ if(cur<=i+1) nextStep(); },acc)); });
+  let acc = 0;
+  const stepTimers = durs.map((d,i) => { acc+=d; return setTimeout(()=>{ if(stepCur<=i+1) nextStep(); }, acc); });
 
   try {
-    const res = await apiFetch('/api/video/gerar', {
-      method:'POST',
+    // Inicia geração — recebe video_id imediatamente
+    const res = await api('/api/video/gerar', {
+      method: 'POST',
       body: JSON.stringify({ tema, nicho, plataforma:plat, duracao, persona, template })
     });
-    timers.forEach(clearTimeout);
-    if (!res || !res.ok) { ov.classList.remove('show'); toast('⚠ erro ao gerar vídeo'); return; }
-    [1,2,3,4,5].forEach(n => { document.getElementById('ps'+n)?.classList.remove('active'); document.getElementById('ps'+n)?.classList.add('done'); });
-    document.getElementById('procBar').style.width = '100%';
-    _vBlob = await res.blob();
-    const cd = res.headers.get('Content-Disposition') || '';
-    const fm = cd.match(/filename="([^"]+)"/);
-    if (fm) _vFilename = fm[1];
-    setTimeout(() => { ov.classList.remove('show'); showResult(); checkKey2(); }, 600);
+
+    stepTimers.forEach(clearTimeout);
+
+    if (!res || res.error) {
+      ov.classList.remove('show');
+      toast('⚠ ' + (res?.error || 'erro ao iniciar geração'));
+      return;
+    }
+
+    _currentVideoId = res.video_id;
+
+    // Polling a cada 5s até status=done ou error
+    _pollingInterval = setInterval(async () => {
+      const poll = await api('/api/video/status/' + _currentVideoId);
+      if (!poll || poll.error) return;
+
+      const video = poll.video;
+      if (!video) return;
+
+      if (video.status === 'done') {
+        clearInterval(_pollingInterval);
+        // Finaliza barra
+        [1,2,3,4,5].forEach(n => {
+          document.getElementById('ps'+n)?.classList.remove('active');
+          document.getElementById('ps'+n)?.classList.add('done');
+        });
+        document.getElementById('procBar').style.width = '100%';
+
+        // Baixa o vídeo
+        setTimeout(async () => {
+          ov.classList.remove('show');
+          await downloadAndShow(_currentVideoId, video.video_url || 'noxar_video.mp4');
+        }, 600);
+
+      } else if (video.status === 'error') {
+        clearInterval(_pollingInterval);
+        ov.classList.remove('show');
+        toast('⚠ erro ao gerar: ' + (video.error_msg || 'tente novamente'));
+      }
+    }, 5000);
+
   } catch(e) {
-    timers.forEach(clearTimeout);
+    stepTimers.forEach(clearTimeout);
+    clearInterval(_pollingInterval);
     ov.classList.remove('show');
     toast('⚠ erro de conexão');
+  }
+}
+
+async function downloadAndShow(video_id, filename) {
+  try {
+    const res = await apiFetch('/api/video/download/' + video_id);
+    if (!res || !res.ok) { toast('⚠ erro ao baixar vídeo'); return; }
+    _vBlob     = await res.blob();
+    _vFilename = filename;
+    showResult();
+    checkKey2();
+  } catch(e) {
+    toast('⚠ erro ao baixar vídeo');
   }
 }
 
