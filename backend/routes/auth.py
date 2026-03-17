@@ -67,18 +67,19 @@ def me():
     """Retorna dados do usuário autenticado."""
     try:
         supabase = get_supabase()
-        profile  = supabase.table("profiles")\
+        profile_resp = supabase.table("profiles")\
             .select("*")\
             .eq("id", g.user_id)\
             .single()\
             .execute()
+        profile = profile_resp.data or {}
 
         return jsonify({
             "user_id":      g.user_id,
             "email":        g.user_email,
-            "display_name": profile.data.get("display_name"),
-            "videos_count": profile.data.get("videos_count", 0),
-            "plan":         profile.data.get("plan", "free"),
+            "display_name": profile.get("display_name"),
+            "videos_count": profile.get("videos_count", 0),
+            "plan":         profile.get("plan", "free"),
         }), 200
 
     except Exception as e:

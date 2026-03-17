@@ -153,6 +153,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--void);color:va
 .user-plan{font-size:8px;color:var(--p-vivid);letter-spacing:.15em}
 .main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;pointer-events:all}
 .topbar{height:clamp(48px,6vh,64px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,2vw,28px);flex-shrink:0;background:rgba(5,5,8,.7);backdrop-filter:blur(12px)}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.topbar-mark{width:28px;height:28px;border:1px solid var(--border);background:rgba(10,10,16,.9);color:var(--txt3);font-family:'Cinzel',serif;cursor:pointer;border-radius:2px;display:flex;align-items:center;justify-content:center;transition:.2s}
+.topbar-mark:hover{color:var(--p-vivid);border-color:var(--p-core);box-shadow:0 0 12px rgba(123,47,190,.25)}
 .topbar-title{font-family:'Cinzel',serif;font-size:clamp(13px,1.2vw,17px);letter-spacing:.15em;color:var(--txt);text-shadow:0 0 20px rgba(199,125,255,.2)}
 .topbar-actions{display:flex;gap:8px}
 .btn-sm{padding:clamp(6px,.7vh,9px) clamp(12px,1.2vw,18px);font-family:'JetBrains Mono',monospace;font-size:clamp(9px,.8vw,12px);letter-spacing:.15em;text-transform:uppercase;border-radius:2px;cursor:pointer;transition:all .2s;pointer-events:all}
@@ -530,7 +533,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--void);color:va
   <!-- MAIN -->
   <div class="main-area">
     <header class="topbar">
-      <span class="topbar-title" id="topbar-title">Dashboard</span>
+      <div class="topbar-left">
+        <button class="topbar-mark" id="noxarXMark" title="Marca Arcana">𖤍</button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+      </div>
       <div class="topbar-actions">
         <button class="btn-sm ghost" onclick="doLogout()">Sair</button>
         <button class="btn-sm primary" onclick="showPage('create')">+ Novo</button>
@@ -774,7 +780,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--void);color:va
   <div class="term-input-wrap" id="termInputWrap">
     <span class="term-input-prompt">> </span>
     <input class="term-input" id="termInput" type="text" placeholder="_ _ _ _" maxlength="20"
-      onkeydown="if(event.key==='Enter')checkKey4(this.value)">
+      onkeydown="if(event.key==='Enter')checkTerminalKey(this.value)">
   </div>
 </div>
 
@@ -788,6 +794,14 @@ const BACKEND_URL   = 'https://noxar-arcana-backend.onrender.com';
 
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let _session = null, _profile = null, _keysStatus = null;
+
+const EASTER_KEYS = {
+  chave1: { valor: '407128', backend: '40.7128', dica: 'abismo por 33 segundos' },
+  chave2: { valor: '2847', backend: 'AR-2847-FINAL', dica: 'último frame + aguarde alguns segundos' },
+  chave3: { valor: '7319', backend: 'ainda respira', dica: 'símbolo 𖤍 no topo esquerdo' },
+};
+const _eggsFound = { chave1: false, chave2: false, chave3: false };
+let _terminalStep = 1;
 
 // ════════════════════════════════════════════════════════
 // CURSOR CUSTOMIZADO
@@ -906,7 +920,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initAuth();
   initParticle();
   initAudio();
-  initFooter();
+  initTopLeftKey();
 });
 
 // ════════════════════════════════════════════════════════
@@ -947,8 +961,18 @@ async function loadKeysStatus() {
   const data = await api('/api/keys/status');
   if (data && !data.error) {
     _keysStatus = data;
+    _chave1done = hasKey('chave1');
+    ['chave1','chave2','chave3'].forEach(k => { _eggsFound[k] = _eggsFound[k] || hasKey(k); });
     if (data.tema_dourado) applyGoldTheme();
   }
+}
+
+function hasKey(chave) {
+  if (!_keysStatus) return false;
+  if (_keysStatus.chaves && Object.prototype.hasOwnProperty.call(_keysStatus.chaves, chave)) {
+    return !!_keysStatus.chaves[chave];
+  }
+  return !!_keysStatus[chave];
 }
 
 function switchTab(tab) {
@@ -1364,41 +1388,15 @@ function activatePortal() {
 // TERMINAL
 // ════════════════════════════════════════════════════════
 const LORE = [
-  { t:'dim',  txt:'> inicializando acesso...' },
-  { t:'dim',  txt:'> verificando credenciais...' },
   { t:'ok',   txt:'> ACESSO CONCEDIDO — arquivo A.R. carregado' },
   { t:'sp',   txt:'' },
-  { t:'kh',   txt:'A.R. — PROJETO ARQUIVO OCULTO' },
-  { t:'kh',   txt:'════════════════════════════════' },
+  { t:'lore', txt:'DICAS PARA AS 3 CHAVES NUMÉRICAS:' },
+  { t:'dim',  txt:'> CHAVE_1: Abismo por 33 segundos' },
+  { t:'dim',  txt:'> CHAVE_2: aguarde após o último frame do vídeo' },
+  { t:'dim',  txt:'> CHAVE_3: toque no símbolo 𖤍 do topo esquerdo' },
   { t:'sp',   txt:'' },
-  { t:'lore', txt:'Em 2019, um pesquisador catalogou 2.847 casos removidos da internet.' },
-  { t:'lore', txt:'Não eram rumores. Eram fatos. Com datas, nomes, coordenadas.' },
-  { t:'lore', txt:'Casos que desapareceram de servidores, arquivos, memórias.' },
-  { t:'sp',   txt:'' },
-  { t:'lore-a', txt:'Em março de 2021, o projeto foi removido.' },
-  { t:'lore-a', txt:'O pesquisador, identificado apenas como A.R., parou de responder.' },
-  { t:'sp',   txt:'' },
-  { t:'lore', txt:'O que sobrou foi o código.' },
-  { t:'lore', txt:'Uma estrutura construída para que as histórias continuassem.' },
-  { t:'lore', txt:'Mesmo que ele parasse.' },
-  { t:'sp',   txt:'' },
-  { t:'bright', txt:'Você está usando esse código agora.' },
-  { t:'sp',   txt:'' },
-  { t:'dim',  txt:'> total de casos catalogados: 2.847' },
-  { t:'dim',  txt:'> status do pesquisador: desconhecido' },
-  { t:'dim',  txt:'> última atualização: 14/03/2021 03:47' },
-  { t:'sp',   txt:'' },
-  { t:'kh',   txt:'CHAVES DO ARQUIVO' },
-  { t:'kh',   txt:'────────────────' },
-  { t:'dim',  txt:'> CHAVE_1: onde a escuridão começa — template Abismo, 33s' },
-  { t:'dim',  txt:'> CHAVE_2: onde a verdade termina — frame oculto no vídeo' },
-  { t:'dim',  txt:'> CHAVE_3: onde ninguém pensa em olhar — rodapé, 7 cliques' },
-  { t:'dim',  txt:'> CHAVE_4: o que não deveria ser ouvido — ouça com atenção' },
-  { t:'sp',   txt:'' },
-  { t:'lore-a', txt:'Algumas histórias não querem ser contadas.' },
-  { t:'lore-a', txt:'Exatamente por isso precisam ser.' },
-  { t:'sp',   txt:'' },
-  { t:'dim',  txt:'> fim do arquivo —' },
+  { t:'lore-a', txt:'Quando descobrir os 3 easter eggs, insira os códigos abaixo.' },
+  { t:'dim',  txt:'> formato: números, sem espaços' },
 ];
 
 let termOpen = false, termAnimFrame = null;
@@ -1425,13 +1423,16 @@ function openTerminal() {
     p += .3; if (p > 100) { clearInterval(progInt); return; }
     if (prog) prog.style.width = p + '%';
   }, LORE.length * 200 / 100);
-  // Chave 4 input (se disponível)
-  if (_keysStatus?.chave4_disponivel) {
-    setTimeout(() => {
-      const wrap = document.getElementById('termInputWrap');
-      if (wrap) wrap.classList.add('show');
-    }, LORE.length * 200 + 1000);
-  }
+  // Terminal interativo das 3 chaves
+  setTimeout(() => {
+    const wrap = document.getElementById('termInputWrap');
+    const input = document.getElementById('termInput');
+    if (!wrap || !input) return;
+    wrap.classList.add('show');
+    _terminalStep = 1;
+    input.value = '';
+    input.placeholder = 'CHAVE_1';
+  }, LORE.length * 200 + 1000);
 }
 
 function closeTerminal() {
@@ -1449,13 +1450,20 @@ function closeTerminal() {
 // ════════════════════════════════════════════════════════
 async function registerKey(chave, prova) {
   const data = await api('/api/keys/encontrar', { method:'POST', body: JSON.stringify({ chave, prova }) });
-  if (!data || data.error) return;
-  if (data.nova) {
-    showKeyNotif(chave, data.mensagem, data.total_encontradas);
-    if (data.tema_dourado_ativado) setTimeout(applyGoldTheme, 1500);
-    if (data.arquivo_liberado) setTimeout(openArquivoAR, 2000);
-    await loadKeysStatus();
+  if (!data) return;
+
+  if (data.error) {
+    if (data.error !== 'prova incorreta') toast('⚠ ' + data.error);
+    return;
   }
+
+  const total = data.total_encontradas || (_keysStatus?.total_encontradas || 0);
+  showKeyNotif(chave, data.mensagem || 'Chave processada.', total);
+
+  if (data.tema_dourado_ativado) setTimeout(applyGoldTheme, 1500);
+  if (data.arquivo_liberado || chave === 'chave4') setTimeout(openArquivoAR, 1200);
+
+  await loadKeysStatus();
 }
 
 function showKeyNotif(chave, msg, total) {
@@ -1476,41 +1484,58 @@ function showCoord() {
   setTimeout(() => {
     if (el) { el.style.transition='opacity .5s'; el.style.opacity='0'; }
     setTimeout(() => { if(el){el.classList.remove('show');el.style.opacity='';el.style.transition='';} }, 500);
-    registerKey('chave1','40.7128');
+    revealEgg('chave1');
   }, 5000);
 }
 
 // CHAVE 2 — Frame oculto fim do vídeo
 function checkKey2() {
-  if (localStorage.getItem('noxar_k2')) return;
+  if (hasKey('chave2')) return;
+  toast('Dica: assista o vídeo até o final para revelar um frame oculto.');
 }
 function showHiddenFrame() {
-  if (localStorage.getItem('noxar_k2')) return;
-  localStorage.setItem('noxar_k2','1');
+  if (hasKey('chave2') || _eggsFound.chave2) return;
   const fr = document.getElementById('frame-oculto');
-  if (fr) fr.classList.add('show');
-  setTimeout(() => { if(fr) fr.classList.remove('show'); registerKey('chave2','AR-2847-FINAL'); }, 500);
+  setTimeout(() => {
+    if (fr) fr.classList.add('show');
+    setTimeout(() => { if(fr) fr.classList.remove('show'); revealEgg('chave2'); }, 1200);
+  }, 2500);
 }
 
-// CHAVE 3 — Footer 7 cliques
+// CHAVE 3 — Símbolo 𖤍 no topo esquerdo
 function confirmarChave3() {
-  const val = document.getElementById('chave3Input')?.value.toLowerCase().trim();
-  if (val === 'ainda respira') {
-    document.getElementById('chave3-ov').classList.remove('show');
-    registerKey('chave3','ainda respira');
-  } else {
-    const inp = document.getElementById('chave3Input');
-    if (inp) { inp.style.borderColor='var(--error)'; setTimeout(()=>{inp.style.borderColor='';},1000); }
-  }
+  revealEgg('chave3');
 }
 
-// CHAVE 4 — Input no terminal
-function checkKey4(val) {
-  if (val.trim() === '2847') {
-    registerKey('chave4','2847');
-    const wrap = document.getElementById('termInputWrap');
-    if (wrap) wrap.classList.remove('show');
+// TERMINAL — Entrada das 3 chaves
+async function checkTerminalKey(val) {
+  const input = document.getElementById('termInput');
+  const clean = String(val || '').replace(/\s+/g,'').trim();
+  const keyName = `chave${_terminalStep}`;
+  const expected = EASTER_KEYS[keyName]?.valor;
+
+  if (!_eggsFound[keyName]) {
+    toast(`⚠ encontre o easter egg da CHAVE_${_terminalStep} primeiro`);
+    return;
   }
+
+  if (clean !== expected) {
+    toast(`⚠ CHAVE_${_terminalStep} inválida`);
+    if (input) { input.value=''; input.style.borderColor='var(--error)'; setTimeout(()=>input.style.borderColor='',800); }
+    return;
+  }
+
+  await registerKey(keyName, EASTER_KEYS[keyName].backend);
+
+  if (_terminalStep < 3) {
+    _terminalStep++;
+    if (input) { input.value=''; input.placeholder = `CHAVE_${_terminalStep}`; }
+    return;
+  }
+
+  const wrap = document.getElementById('termInputWrap');
+  if (wrap) wrap.classList.remove('show');
+  toast('✓ 3 chaves validadas no terminal');
 }
 
 // Arquivo A.R.
@@ -1528,28 +1553,20 @@ async function openArquivoAR() {
 }
 
 // ════════════════════════════════════════════════════════
-// FOOTER — CHAVE 3
+// TOPO ESQUERDO — CHAVE 3
 // ════════════════════════════════════════════════════════
-function initFooter() {
-  let clicks = 0, timer;
-  const fc = document.getElementById('footerCopy');
-  if (!fc) return;
-  fc.addEventListener('click', () => {
-    clicks++;
-    clearTimeout(timer);
-    timer = setTimeout(() => { clicks=0; fc.style.color=''; fc.style.textShadow=''; }, 3000);
-    const prog = Math.min(clicks/7, 1);
-    const r = Math.round(74 + (157-74)*prog);
-    const g = Math.round(14 + (78-14)*prog);
-    const b = Math.round(143 + (221-143)*prog);
-    fc.style.color = `rgb(${r},${g},${b})`;
-    fc.style.textShadow = clicks>=4 ? `0 0 ${clicks*3}px rgba(123,47,190,0.6)` : '';
-    if (clicks >= 7) {
-      clicks=0; clearTimeout(timer);
-      fc.style.color=''; fc.style.textShadow='';
-      setTimeout(() => document.getElementById('chave3-ov').classList.add('show'), 300);
-    }
-  });
+function initTopLeftKey() {
+  const mark = document.getElementById('noxarXMark');
+  if (!mark) return;
+  mark.addEventListener('click', () => confirmarChave3());
+}
+
+function revealEgg(chave) {
+  if (_eggsFound[chave] || hasKey(chave)) return;
+  _eggsFound[chave] = true;
+  const codigo = EASTER_KEYS[chave]?.valor || '0000';
+  showKeyNotif(chave, `Easter egg encontrado. Código numérico: ${codigo}`, Object.values(_eggsFound).filter(Boolean).length);
+  toast(`CHAVE ${chave.replace('chave','')} descoberta: ${codigo}`);
 }
 
 // ════════════════════════════════════════════════════════
@@ -1636,7 +1653,7 @@ Object.assign(window, {
   switchTab, doLogin, doRegister, doRecover, doLogout, togglePass,
   selPill, updDur, startProcessing, downloadVideo, showSeoTab,
   delVideo, loadHistory,
-  closeTerminal, checkKey4, confirmarChave3,
+  closeTerminal, checkTerminalKey, confirmarChave3,
   openArquivoAR,
   applyGoldTheme,
 });
