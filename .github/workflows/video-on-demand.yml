@@ -1,0 +1,68 @@
+name: Video Pipeline On Demand
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: ID do vídeo
+        required: true
+      user_id:
+        description: ID do usuário
+        required: true
+      tema:
+        description: Tema do vídeo
+        required: true
+      nicho:
+        description: Nicho
+        required: true
+      plataforma:
+        description: Plataforma
+        required: true
+      duracao:
+        description: Duração em segundos
+        required: true
+      persona:
+        description: Persona
+        required: true
+      template:
+        description: Template
+        required: true
+
+jobs:
+  render_video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      TEMP_VIDEO_DIR: /tmp/noxar_videos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run video pipeline
+        run: |
+          python backend/scripts/run_video_job.py \
+            --video-id "${{ github.event.inputs.video_id }}" \
+            --user-id "${{ github.event.inputs.user_id }}" \
+            --tema "${{ github.event.inputs.tema }}" \
+            --nicho "${{ github.event.inputs.nicho }}" \
+            --plataforma "${{ github.event.inputs.plataforma }}" \
+            --duracao "${{ github.event.inputs.duracao }}" \
+            --persona "${{ github.event.inputs.persona }}" \
+            --template "${{ github.event.inputs.template }}"

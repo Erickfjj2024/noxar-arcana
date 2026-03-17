@@ -8,6 +8,7 @@ import uuid
 import shutil
 import logging
 import threading
+import requests
 from flask import Blueprint, request, jsonify, g, send_file
 from routes.auth import require_auth
 from services.groq_service import pipeline_roteiro, transcrever_audio
@@ -22,12 +23,25 @@ video_bp   = Blueprint("video", __name__)
 TEMP_DIR   = os.getenv("TEMP_VIDEO_DIR", "/tmp/noxar_videos")
 VIDEOS_DIR = os.path.join(TEMP_DIR, "ready")
 
+NICHOS_VALIDOS = {"true_crime", "terror", "misterio", "dark_history"}
+PLATAFORMAS_VALIDAS = {"tiktok", "youtube", "kwai", "reels"}
+PERSONAS_VALIDAS = {"investigador", "contador", "informante"}
+TEMPLATES_VALIDOS = {"sangue_frio", "nevoa", "abismo"}
+
+PIPELINE_RUNNER = os.getenv("PIPELINE_RUNNER", "github").lower()
+GITHUB_API = "https://api.github.com"
+
+
 os.makedirs(TEMP_DIR,   exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 
 def get_supabase():
-    return create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL ou SUPABASE_SERVICE_KEY não configurados")
+    return create_client(url, key)
 
 
 def update_status(video_id, status, error=None):
@@ -50,6 +64,40 @@ def extrair_narracao(roteiro):
         if c.get("narracao"):     partes.append(c["narracao"].strip())
     if roteiro.get("encerramento"): partes.append(roteiro["encerramento"])
     return " ".join(partes)
+
+
+def dispatch_github_pipeline(video_id, user_id, tema, nicho, plataforma, duracao, persona, template):
+    repo = os.getenv("GITHUB_ACTIONS_REPO")
+    token = os.getenv("GITHUB_ACTIONS_TOKEN")
+    workflow = os.getenv("GITHUB_ACTIONS_WORKFLOW", "video-on-demand.yml")
+    ref = os.getenv("GITHUB_ACTIONS_REF", "main")
+
+    if not repo or not token:
+        raise RuntimeError("GITHUB_ACTIONS_REPO e GITHUB_ACTIONS_TOKEN são obrigatórios")
+
+    url = f"{GITHUB_API}/repos/{repo}/actions/workflows/{workflow}/dispatches"
+    payload = {
+        "ref": ref,
+        "inputs": {
+            "video_id": video_id,
+            "user_id": user_id,
+            "tema": tema,
+            "nicho": nicho,
+            "plataforma": plataforma,
+            "duracao": str(duracao),
+            "persona": persona,
+            "template": template,
+        }
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=20)
+    if resp.status_code != 204:
+        raise RuntimeError(f"Falha ao disparar workflow GitHub ({resp.status_code}): {resp.text[:300]}")
 
 
 def run_pipeline(video_id, user_id, tema, nicho, plataforma, duracao, persona, template):
@@ -133,12 +181,24 @@ def gerar():
     tema       = str(data["tema"]).strip()
     nicho      = str(data["nicho"]).strip()
     plataforma = str(data["plataforma"]).strip()
-    duracao    = int(data["duracao"])
+    try:
+        duracao = int(data["duracao"])
+    except (TypeError, ValueError):
+        return jsonify({"error": "duração deve ser numérica"}), 400
     persona    = str(data["persona"]).strip()
     template   = str(data["template"]).strip()
 
     if not tema or duracao < 15 or duracao > 600:
         return jsonify({"error": "parâmetros inválidos"}), 400
+
+    if nicho not in NICHOS_VALIDOS:
+        return jsonify({"error": f"nicho inválido. Use: {sorted(NICHOS_VALIDOS)}"}), 400
+    if plataforma not in PLATAFORMAS_VALIDAS:
+        return jsonify({"error": f"plataforma inválida. Use: {sorted(PLATAFORMAS_VALIDAS)}"}), 400
+    if persona not in PERSONAS_VALIDAS:
+        return jsonify({"error": f"persona inválida. Use: {sorted(PERSONAS_VALIDAS)}"}), 400
+    if template not in TEMPLATES_VALIDOS:
+        return jsonify({"error": f"template inválido. Use: {sorted(TEMPLATES_VALIDOS)}"}), 400
 
     video_id = str(uuid.uuid4())
 
@@ -153,14 +213,24 @@ def gerar():
     except Exception as e:
         logger.warning(f"Insert falhou: {e}")
 
-    threading.Thread(
-        target=run_pipeline,
-        args=(video_id, g.user_id, tema, nicho, plataforma, duracao, persona, template),
-        daemon=True
-    ).start()
+    if PIPELINE_RUNNER == "local":
+        threading.Thread(
+            target=run_pipeline,
+            args=(video_id, g.user_id, tema, nicho, plataforma, duracao, persona, template),
+            daemon=True
+        ).start()
+        logger.info(f"[{video_id[:8]}] Thread local iniciada")
+        return jsonify({"success": True, "video_id": video_id, "status": "processing", "runner": "local"}), 202
 
-    logger.info(f"[{video_id[:8]}] Thread iniciada")
-    return jsonify({"success": True, "video_id": video_id, "status": "processing"}), 202
+    try:
+        dispatch_github_pipeline(video_id, g.user_id, tema, nicho, plataforma, duracao, persona, template)
+        get_supabase().table("videos").update({"status": "queued"}).eq("id", video_id).execute()
+        logger.info(f"[{video_id[:8]}] Job enviado para GitHub Actions")
+        return jsonify({"success": True, "video_id": video_id, "status": "queued", "runner": "github"}), 202
+    except Exception as e:
+        logger.error(f"[{video_id[:8]}] Falha ao despachar job GitHub: {e}")
+        update_status(video_id, "error", str(e))
+        return jsonify({"error": "falha ao iniciar processamento on-demand"}), 502
 
 
 @video_bp.route("/status/<video_id>", methods=["GET"])
@@ -210,8 +280,12 @@ def download(video_id):
 @video_bp.route("/historico", methods=["GET"])
 @require_auth
 def historico():
-    limit  = min(int(request.args.get("limit", 20)), 50)
-    offset = int(request.args.get("offset", 0))
+    try:
+        limit = min(max(int(request.args.get("limit", 20)), 1), 50)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "parâmetros de paginação inválidos"}), 400
+
     try:
         res = get_supabase().table("videos")\
             .select("id,title,niche,platform,persona,template,status,created_at,completed_at,duration_target")\
