@@ -63,6 +63,32 @@ git push -u origin main
 
 ---
 
+
+### Offload de renderização para GitHub Actions (obrigatório para evitar queda no Render)
+
+No Render, adicione também estas variáveis para despachar jobs pesados para o GitHub:
+
+```
+PIPELINE_RUNNER         = github
+GITHUB_ACTIONS_REPO     = SEU_USER/noxar-arcana
+GITHUB_ACTIONS_TOKEN    = token com permissão Actions: Read and write
+GITHUB_ACTIONS_WORKFLOW = video-on-demand.yml
+GITHUB_ACTIONS_REF      = main
+```
+
+Depois, no GitHub do repositório:
+1. **Settings → Secrets and variables → Actions → New repository secret**
+2. Crie os secrets abaixo (mesmos valores do backend):
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_KEY`
+   - `GROQ_API_KEY`
+   - `ELEVENLABS_API_KEY` (se usar)
+3. O workflow `video-on-demand.yml` executará FFmpeg/Groq/tts no runner do GitHub sob demanda.
+
+Com isso, o Render só coordena requests e status, sem processar vídeo pesado.
+
+---
+
 ## PASSO 4 — Vercel (5 min)
 
 1. Acesse vercel.com → New Project
@@ -103,9 +129,9 @@ Frontend (Vercel)
 │   ├── Supabase JS SDK — auth direto (seguro)
 │   └── JWT token em memória (nunca localStorage)
 │
-Backend (Render) — PRIVADO
+Backend (Render) — ORQUESTRADOR
 │   ├── Valida JWT do Supabase em toda requisição
-│   ├── GROQ_API_KEY em variável de ambiente
+│   ├── Dispara pipeline pesado sob demanda no GitHub Actions
 │   └── Nunca expõe chaves ao frontend
 │
 Supabase
@@ -124,6 +150,9 @@ Supabase
 | SUPABASE_URL | Render + Vercel | ✅ Pode (é pública) |
 | SUPABASE_ANON_KEY | Render + Vercel | ✅ Pode (RLS protege) |
 | VITE_BACKEND_URL | Vercel | ✅ Pode |
+| PIPELINE_RUNNER | Render | ✅ Pode |
+| GITHUB_ACTIONS_REPO | Render | ✅ Pode |
+| GITHUB_ACTIONS_TOKEN | Render | ❌ Nunca |
 
 ---
 
